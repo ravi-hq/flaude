@@ -1,0 +1,9 @@
+.env
+*.pyc
+.pytest_cache
+.coverage
+.DS_Store
+.ruff_cache
+.mypy_cache
+.venv
+dist

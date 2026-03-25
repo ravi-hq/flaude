@@ -1,0 +1,83 @@
+goal: >
+  Build a Python library (flaude) that spins up Fly.io machines on demand
+  to execute Claude Code prompts, streams results via Fly log drains as async
+  iterators, and auto-destroys machines after completion.
+
+constraints:
+  - Python library (importable package, no CLI)
+  - Fly.io Machines API for provisioning (authenticated via FLY_API_TOKEN env var)
+  - Claude Code installed in container via library-managed Docker image
+  - CLAUDE_CODE_OAUTH_TOKEN env var set on Fly machine for Claude Code auth
+  - GITHUB_USERNAME and GITHUB_TOKEN env vars set on Fly machine for git clone
+  - Simple list of repo URLs for cloning (no branch/sparse-checkout config)
+  - Prompt string only — no Claude Code CLI flags passthrough
+  - Auto-destroy machine on any failure or completion
+  - Concurrent execution support (multiple machines in parallel)
+
+acceptance_criteria:
+  - Library can build and push a Docker image with Claude Code and git and gh cli pre-installed
+  - Library can create a Fly app programmatically if one doesn't exist
+  - Library can spin up a Fly machine with correct env vars (CLAUDE_CODE_OAUTH_TOKEN, GITHUB_USERNAME, GITHUB_TOKEN)
+  - Fly machine clones all specified repos before running Claude Code
+  - Claude Code runs the user-provided prompt string inside the machine
+  - Stdout is streamed back to the caller as a Python async iterator via Fly log drains
+  - Machine is automatically destroyed after Claude Code exits (success or failure)
+  - On failure, a Python exception is raised containing available logs
+  - Multiple prompts can be executed concurrently on separate machines
+
+ontology_schema:
+  name: FlyingClaude
+  description: Domain model for on-demand Claude Code execution on Fly.io
+  fields:
+    - name: fly_app
+      type: object
+      description: Fly.io application configuration (name, org, region)
+    - name: machine
+      type: object
+      description: A Fly.io machine instance running Claude Code
+    - name: machine_config
+      type: object
+      description: VM size, image ref, env vars, and entrypoint for the machine
+    - name: prompt
+      type: string
+      description: The Claude Code prompt string to execute
+    - name: repos
+      type: array
+      description: List of GitHub repo URLs to clone before execution
+    - name: log_stream
+      type: object
+      description: Async iterator yielding stdout chunks from Fly log drains
+    - name: execution_result
+      type: object
+      description: Final status (success/failure), collected output, and error info
+
+evaluation_principles:
+  - name: reliability
+    description: Machines are always cleaned up — no orphaned resources
+    weight: 0.3
+  - name: streaming_fidelity
+    description: Log output arrives in order with minimal latency
+    weight: 0.25
+  - name: simplicity
+    description: API surface is minimal and intuitive (async for chunk in run(...))
+    weight: 0.25
+  - name: concurrency
+    description: Multiple executions run independently without interference
+    weight: 0.2
+
+exit_conditions:
+  - name: prompt_complete
+    description: Claude Code process exits on the Fly machine
+    criteria: Machine stdout stream ends and exit code is captured
+  - name: machine_destroyed
+    description: Fly machine is destroyed after execution
+    criteria: Fly API confirms machine deletion
+  - name: timeout_exceeded
+    description: Execution exceeds a reasonable default timeout
+    criteria: Machine is force-destroyed and exception raised
+
+metadata:
+  version: 1.0.0
+  timestamp: "2026-03-25"
+  ambiguity_score: 0.12
+  source: ouroboros-interview-plugin-fallback
