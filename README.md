@@ -213,19 +213,19 @@ E2E tests spin up real Fly.io machines, run Claude Code, and verify the full lif
 
 #### Prerequisites
 
-You need two tokens:
-
-| Token | How to get it |
-|-------|--------------|
-| `FLY_API_TOKEN` | Already in your `.env` file. Authenticates Fly.io API calls from your machine. |
-| `CLAUDE_CODE_OAUTH_TOKEN` | A Claude Code OAuth token (`sk-ant-oat-...`). Pass it as an env var — it is forwarded into the Fly machine for Claude Code auth. |
-
-Optional (only for private repo tests):
+All required tokens are in `.env`:
 
 | Token | Purpose |
 |-------|---------|
-| `GITHUB_USERNAME` | Git clone auth (already in `.env`) |
-| `GITHUB_TOKEN` | Git clone auth (already in `.env`) |
+| `FLY_API_TOKEN` | Authenticates Fly.io API calls from your machine |
+| `CLAUDE_CODE_OAUTH_TOKEN` | Forwarded into the Fly machine for Claude Code auth |
+| `GITHUB_USERNAME` | Git clone auth (optional, for private repo tests) |
+| `GITHUB_TOKEN` | Git clone auth (optional, for private repo tests) |
+
+Optional:
+
+| Env var | Purpose |
+|---------|---------|
 | `FLAUDE_E2E_PRIVATE_REPO` | Full URL of a private repo to test cloning |
 
 The Docker image `registry.fly.io/flaude:latest` must be pushed before running E2E tests.
@@ -233,10 +233,7 @@ The Docker image `registry.fly.io/flaude:latest` must be pushed before running E
 #### Running E2E tests
 
 ```bash
-# Load Fly + GitHub tokens from .env, add your Claude Code token, run:
-source .env
-export CLAUDE_CODE_OAUTH_TOKEN="sk-ant-oat-..."
-pytest -m e2e -v
+source .env && pytest -m e2e -v
 ```
 
 That's it. Each test creates a real Fly machine, runs a prompt, checks the output, and destroys the machine. Expect ~1-3 minutes per test.
@@ -255,10 +252,10 @@ That's it. Each test creates a real Fly machine, runs a prompt, checks the outpu
 
 ```bash
 # Just the smoke test (fastest, ~1 min):
-source .env && CLAUDE_CODE_OAUTH_TOKEN="..." pytest -m e2e -v -k smoke
+source .env && pytest -m e2e -v -k smoke
 
 # Everything including unit tests:
-source .env && CLAUDE_CODE_OAUTH_TOKEN="..." pytest -m "" -v
+source .env && pytest -m "" -v
 ```
 
 ## License

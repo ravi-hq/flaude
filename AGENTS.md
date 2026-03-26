@@ -102,8 +102,8 @@ All API calls go through `fly_client.py` which wraps httpx:
 - **HTTP mocking**: respx
 - **18 test files** covering: app, machine, config, runner, executor, lifecycle, log drain, log stream, log parsing, entrypoint, exit codes, cleanup guarantees, concurrent integration, failure logs, image, startup env, prompt execution
 - **Run unit tests**: `pytest` (E2E excluded by default via `addopts = "-m 'not e2e'"`)
-- **Run E2E tests**: `source .env && CLAUDE_CODE_OAUTH_TOKEN="sk-ant-oat-..." pytest -m e2e -v`
-- **E2E requires**: `FLY_API_TOKEN` (in env) + `CLAUDE_CODE_OAUTH_TOKEN` (in env) + Docker image pushed
+- **Run E2E tests**: `source .env && pytest -m e2e -v`
+- **E2E requires**: `FLY_API_TOKEN` + `CLAUDE_CODE_OAUTH_TOKEN` (both in `.env`) + Docker image pushed
 - **E2E test files**: `tests/conftest.py` (fixtures), `tests/test_e2e.py` (5 tests)
 - **E2E validates**: machine lifecycle, log streaming, public/private repo clone, cleanup guarantee
 
