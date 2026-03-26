@@ -37,7 +37,17 @@ _SENTINEL = None
 
 @dataclass
 class LogEntry:
-    """Parsed representation of a single Fly.io log drain entry."""
+    """Parsed representation of a single Fly.io log drain entry.
+
+    Attributes:
+        machine_id: The Fly machine ID that produced this log entry.
+        message: The log line content.
+        stream: Output stream — ``"stdout"``, ``"stderr"``, or ``"system"``
+            (Fly infrastructure messages).
+        timestamp: ISO 8601 timestamp string from the log drain payload (may be empty).
+        app_name: The Fly.io application name (may be empty if not present in payload).
+        raw: The original parsed JSON dict from the log drain request.
+    """
 
     machine_id: str
     message: str
@@ -72,6 +82,10 @@ class LogCollector:
         """Push a log line to the queue for *machine_id*.
 
         If no subscriber exists for this machine, the line is silently dropped.
+
+        Args:
+            machine_id: The Fly machine ID whose queue should receive the line.
+            line: The log line string to enqueue.
         """
         async with self._lock:
             q = self._queues.get(machine_id)
@@ -82,6 +96,9 @@ class LogCollector:
         """Signal that no more logs will arrive for *machine_id*.
 
         Pushes a ``None`` sentinel and removes the queue from the registry.
+
+        Args:
+            machine_id: The Fly machine ID whose queue should be finalized.
         """
         async with self._lock:
             q = self._queues.pop(machine_id, None)
@@ -176,6 +193,12 @@ def parse_ndjson(body: bytes) -> list[dict[str, Any]]:
     """Parse an NDJSON (newline-delimited JSON) body into a list of dicts.
 
     Silently skips malformed lines.
+
+    Args:
+        body: Raw HTTP request body containing newline-delimited JSON.
+
+    Returns:
+        List of successfully parsed JSON objects. Malformed lines are omitted.
     """
     entries: list[dict[str, Any]] = []
     for line in body.split(b"\n"):
@@ -216,6 +239,15 @@ class LogDrainServer:
         port: int = 0,
         include_stderr: bool = False,
     ) -> None:
+        """Initialize the log drain server.
+
+        Args:
+            collector: The :class:`LogCollector` that receives and routes log entries.
+            host: Network interface to bind to. Defaults to ``0.0.0.0`` (all interfaces).
+            port: TCP port to listen on. Use ``0`` for OS-assigned ephemeral port.
+            include_stderr: If True, stderr lines are forwarded to collectors in
+                addition to stdout. Defaults to False.
+        """
         self.collector = collector
         self.host = host
         self.port = port

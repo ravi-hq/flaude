@@ -75,6 +75,7 @@ class BatchResult:
 
     @property
     def all_succeeded(self) -> bool:
+        """True if every execution in the batch completed with exit code 0."""
         return self.succeeded == self.total
 
 

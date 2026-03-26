@@ -17,6 +17,10 @@ dev = [
     "pytest-asyncio>=0.24",
     "respx>=0.22",
 ]
+docs = [
+    "mkdocs-material>=9.5",
+    "mkdocstrings[python]>=0.27",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["flaude"]
@@ -28,3 +32,11 @@ addopts = "-m 'not e2e'"
 markers = [
     "e2e: real Fly.io integration tests (require FLY_API_TOKEN and CLAUDE_CODE_OAUTH_TOKEN)",
 ]
+
+[tool.hatch.envs.docs]
+features = ["docs"]
+
+[tool.hatch.envs.docs.scripts]
+serve = "mkdocs serve --dev-addr localhost:8000"
+build = "mkdocs build --strict"
+deploy = "mkdocs gh-deploy --force"

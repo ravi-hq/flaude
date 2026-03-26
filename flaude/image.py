@@ -26,7 +26,13 @@ _DEFAULT_DOCKER_CONTEXT = _PACKAGE_DIR.parent.parent / "flaude"
 
 
 class ImageBuildError(Exception):
-    """Raised when the Docker image build or push fails."""
+    """Raised when the Docker image build or push fails.
+
+    Attributes:
+        returncode: The process exit code from the failed command, or ``None``
+            if the failure occurred before the process started (e.g. missing file).
+        stderr: Captured stderr output from the failed command (may be empty).
+    """
 
     def __init__(self, message: str, returncode: int | None = None, stderr: str = ""):
         self.returncode = returncode

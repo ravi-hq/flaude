@@ -14,7 +14,16 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class FlyMachine:
-    """Represents a running (or recently created) Fly.io machine."""
+    """Represents a running (or recently created) Fly.io machine.
+
+    Attributes:
+        id: The unique Fly machine ID assigned by the Fly Machines API.
+        name: Human-readable name for the machine (may be empty).
+        state: Current machine state (e.g. ``created``, ``started``, ``stopped``).
+        region: The Fly.io region the machine is running in (e.g. ``iad``).
+        instance_id: Internal instance identifier assigned by Fly.io.
+        app_name: The Fly.io application this machine belongs to.
+    """
 
     id: str
     name: str
@@ -155,6 +164,11 @@ async def stop_machine(
 
     This is a best-effort call — if the machine is already stopped or
     destroyed the error is suppressed.
+
+    Args:
+        app_name: The Fly app the machine belongs to.
+        machine_id: The machine ID to stop.
+        token: Explicit API token (falls back to ``FLY_API_TOKEN``).
     """
     try:
         await fly_post(

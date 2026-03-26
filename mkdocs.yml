@@ -1,0 +1,81 @@
+site_name: flaude
+site_description: On-demand Claude Code execution on Fly.io machines
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: deep purple
+      accent: amber
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: deep purple
+      accent: amber
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - content.code.copy
+    - content.code.annotate
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - toc.follow
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed:
+      alternate_style: true
+  - toc:
+      permalink: true
+  - attr_list
+
+plugins:
+  - search
+  - mkdocstrings:
+      default_handler: python
+      handlers:
+        python:
+          options:
+            docstring_style: google
+            show_source: true
+            show_root_heading: true
+            show_root_full_path: false
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+            members_order: source
+            merge_init_into_class: true
+            separate_signature: true
+            signature_crossrefs: true
+
+nav:
+  - Home: index.md
+  - Getting Started: getting-started.md
+  - Guides:
+    - Streaming Logs: guide/streaming.md
+    - Concurrent Execution: guide/concurrent.md
+    - Error Handling: guide/error-handling.md
+    - Private Repositories: guide/private-repos.md
+    - Docker Image: guide/docker-image.md
+    - Building on flaude: guide/building-on-flaude.md
+  - Concepts:
+    - Architecture: concepts/architecture.md
+    - Log Drain Infrastructure: concepts/log-drain.md
+  - API Reference:
+    - Configuration: api/configuration.md
+    - Execution: api/execution.md
+    - Concurrent: api/concurrent.md
+    - App & Machine: api/app-machine.md
+    - Log Infrastructure: api/log-infrastructure.md
+    - Image: api/image.md
+    - Errors: api/errors.md
+  - Changelog: changelog.md

@@ -31,7 +31,19 @@ class FlyApp:
 
 
 async def get_app(app_name: str, *, token: str | None = None) -> FlyApp | None:
-    """Return a FlyApp if it already exists, or None if not found."""
+    """Return a FlyApp if it already exists, or None if not found.
+
+    Args:
+        app_name: The Fly.io application name to look up.
+        token: Optional explicit API token (otherwise reads ``FLY_API_TOKEN``).
+
+    Returns:
+        A :class:`FlyApp` dataclass if the app exists, or ``None`` if the app
+        is not found (HTTP 404).
+
+    Raises:
+        FlyAPIError: If the API returns any error other than 404.
+    """
     try:
         data = await fly_get(f"/apps/{app_name}", token=token)
         if data and isinstance(data, dict):
