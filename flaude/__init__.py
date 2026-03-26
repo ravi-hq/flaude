@@ -1,6 +1,6 @@
 # flaude: On-demand Claude Code execution on Fly.io
 
-from flaude.app import FlyApp, ensure_app
+from flaude.app import FlyApp, create_app, ensure_app, get_app
 from flaude.executor import (
     BatchResult,
     ConcurrentExecutor,
@@ -36,6 +36,7 @@ from flaude.machine_config import MachineConfig, RepoSpec, build_machine_config
 from flaude.runner import (
     MachineExitError,
     RunResult,
+    extract_exit_code_from_logs,
     run,
     run_and_destroy,
     wait_for_machine_exit,
@@ -48,6 +49,8 @@ __all__ = [
     "ExecutionResult",
     "FlyApp",
     "FlyMachine",
+    "create_app",
+    "get_app",
     "ImageBuildError",
     "LogCollector",
     "LogDrainServer",
@@ -60,6 +63,7 @@ __all__ = [
     "StreamingRun",
     "async_iter_queue",
     "build_machine_config",
+    "extract_exit_code_from_logs",
     "create_machine",
     "destroy_machine",
     "docker_build",

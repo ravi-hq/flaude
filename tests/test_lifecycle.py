@@ -385,6 +385,153 @@ class TestWaitSignalDestroy:
 # ---------------------------------------------------------------------------
 
 
+class TestStreamingRunAsyncIteratorProtocol:
+    """Verify __aiter__/__anext__ protocol and real-time delivery guarantees."""
+
+    def _mock_machine(self, machine_id: str = MACHINE_ID) -> None:
+        respx.post(f"{FLY_API_BASE}/apps/{APP}/machines").mock(
+            return_value=httpx.Response(200, json=_machine_response(machine_id=machine_id))
+        )
+        respx.get(
+            f"{FLY_API_BASE}/apps/{APP}/machines/{machine_id}/wait?state=stopped"
+        ).mock(return_value=httpx.Response(200, json={}))
+        respx.get(f"{FLY_API_BASE}/apps/{APP}/machines/{machine_id}").mock(
+            return_value=httpx.Response(200, json=_stopped_response(machine_id=machine_id))
+        )
+        respx.post(f"{FLY_API_BASE}/apps/{APP}/machines/{machine_id}/stop").mock(
+            return_value=httpx.Response(200, json={})
+        )
+        respx.delete(
+            f"{FLY_API_BASE}/apps/{APP}/machines/{machine_id}?force=true"
+        ).mock(return_value=httpx.Response(200, json={}))
+
+    @respx.mock
+    async def test_aiter_returns_self(self):
+        """__aiter__() must return the StreamingRun itself (iterator protocol)."""
+        self._mock_machine()
+        streaming = await run_with_logs(APP, _config(), token=TOKEN)
+        assert streaming.__aiter__() is streaming
+        await streaming.result()
+        await streaming.cleanup()
+
+    @respx.mock
+    async def test_anext_raises_stop_after_sentinel(self):
+        """__anext__ raises StopAsyncIteration once the stream is exhausted."""
+        self._mock_machine()
+        streaming = await run_with_logs(APP, _config(), token=TOKEN)
+
+        # Wait for the background task (which pushes the sentinel)
+        await streaming.result(raise_on_failure=False)
+
+        # Stream is done — __anext__ must raise StopAsyncIteration
+        with pytest.raises(StopAsyncIteration):
+            await streaming.__anext__()
+
+    @respx.mock
+    async def test_lines_available_before_machine_stops(self):
+        """Lines are yielded to the caller in real-time, before the machine exits.
+
+        This test verifies that a caller iterating the stream receives each line
+        as soon as it is pushed to the collector — not batched until machine stop.
+        """
+        self._mock_machine()
+        streaming = await run_with_logs(APP, _config(), token=TOKEN)
+
+        received: list[str] = []
+        line_received_event = asyncio.Event()
+
+        async def consumer():
+            async for line in streaming:
+                received.append(line)
+                if not line_received_event.is_set():
+                    line_received_event.set()
+
+        consume_task = asyncio.create_task(consumer())
+
+        # Push a line — it should be yielded immediately, even though the
+        # machine background task has not yet delivered the sentinel.
+        await streaming._collector.push(MACHINE_ID, "early-line")
+
+        # Wait for the consumer to receive it (real-time: must arrive quickly)
+        await asyncio.wait_for(line_received_event.wait(), timeout=1.0)
+        assert received == ["early-line"], (
+            f"Expected ['early-line'] but got {received}; "
+            "line was not delivered in real-time"
+        )
+
+        # Now let the machine fully stop (sentinel will be pushed via result())
+        await streaming.result(raise_on_failure=False)
+        await consume_task
+        await streaming.cleanup()
+
+    @respx.mock
+    async def test_lines_delivered_in_order(self):
+        """Lines are yielded in the same order they were pushed."""
+        self._mock_machine()
+        streaming = await run_with_logs(APP, _config(), token=TOKEN)
+
+        # Pre-load lines into the collector queue
+        ordered_lines = [f"line-{i}" for i in range(10)]
+        for line in ordered_lines:
+            await streaming._collector.push(MACHINE_ID, line)
+
+        # Collect via async for (sentinel arrives via result background task)
+        collected: list[str] = []
+        async for line in streaming:
+            collected.append(line)
+            if len(collected) == len(ordered_lines):
+                break  # don't wait for sentinel; we have what we need
+
+        assert collected == ordered_lines
+
+        await streaming.result(raise_on_failure=False)
+        await streaming.cleanup()
+
+    @respx.mock
+    async def test_collected_logs_tracks_yielded_lines(self):
+        """collected_logs property accumulates all lines yielded via __anext__."""
+        self._mock_machine()
+        streaming = await run_with_logs(APP, _config(), token=TOKEN, item_timeout=0.5)
+
+        await streaming._collector.push(MACHINE_ID, "alpha")
+        await streaming._collector.push(MACHINE_ID, "beta")
+
+        # Iterate — background task will send sentinel and stop iteration
+        lines = []
+        async for line in streaming:
+            lines.append(line)
+
+        # collected_logs should mirror what we iterated
+        assert "alpha" in streaming.collected_logs
+        assert "beta" in streaming.collected_logs
+        assert streaming.collected_logs == lines
+
+        await streaming.result(raise_on_failure=False)
+        await streaming.cleanup()
+
+    @respx.mock
+    async def test_terminates_cleanly_when_machine_stops(self):
+        """Iteration ends without error when the machine exits normally."""
+        self._mock_machine()
+        streaming = await run_with_logs(APP, _config(), token=TOKEN)
+
+        await streaming._collector.push(MACHINE_ID, "msg1")
+        await streaming._collector.push(MACHINE_ID, "msg2")
+
+        # Exhaust the stream — should terminate with no exception
+        lines = []
+        async for line in streaming:
+            lines.append(line)
+
+        # Stream is cleanly done (not timed out)
+        assert streaming.done
+        assert not streaming.log_stream.timed_out
+
+        result = await streaming.result(raise_on_failure=False)
+        assert result.exit_code == 0
+        await streaming.cleanup()
+
+
 class TestStreamingRunIteration:
     @respx.mock
     async def test_iterates_log_lines(self):

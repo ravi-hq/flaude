@@ -106,8 +106,20 @@ def parse_log_entry(raw: dict[str, Any]) -> LogEntry | None:
 
     Fly log drain NDJSON format varies, but typically contains:
     - ``fly.app.instance`` or ``fly.machine.id``: machine identifier
-    - ``message`` or ``log``: the log line content
-    - ``stream``: ``stdout`` or ``stderr``
+    - ``message``, ``log``, or ``msg``: the log line content
+    - ``stream``: ``"stdout"`` or ``"stderr"`` for user process output
+    - ``source``: log origin — ``"app"`` for user code, ``"fly"``/``"proxy"``/
+      ``"machine"`` for Fly infrastructure messages
+
+    Stream determination logic:
+
+    1. If the ``stream`` field is explicitly set, use it as-is.
+    2. If no ``stream`` field but ``source`` indicates Fly infrastructure
+       (``"fly"``, ``"proxy"``, or ``"machine"``), the entry is classified
+       as ``"system"`` — a Fly-generated lifecycle or health message that
+       should not appear in user-facing log output.
+    3. If neither field is set, default to ``"stdout"`` (user application
+       log without explicit stream tagging).
 
     Returns None if the entry cannot be parsed or is missing required fields.
     """
@@ -122,13 +134,29 @@ def parse_log_entry(raw: dict[str, Any]) -> LogEntry | None:
     if not machine_id:
         return None
 
-    # Extract message
+    # Extract message — accept multiple field name aliases
     message = raw.get("message") or raw.get("log") or raw.get("msg") or ""
     if not isinstance(message, str):
         message = str(message)
 
-    # Extract stream (default to stdout if not specified)
-    stream = raw.get("stream") or raw.get("source") or "stdout"
+    # Determine stream type, carefully separating user output from system logs.
+    #
+    # Fly's "source" field indicates log *origin* (who produced the log), not
+    # the output stream. Sources "fly", "proxy", and "machine" are Fly
+    # infrastructure; "app" (or absent) means user process output.
+    explicit_stream = raw.get("stream") or ""
+    if explicit_stream:
+        # Explicit stream tag — trust it directly ("stdout", "stderr", etc.)
+        stream = explicit_stream
+    else:
+        source = raw.get("source") or ""
+        if source in ("fly", "proxy", "machine"):
+            # Fly infrastructure message (lifecycle events, health checks, etc.)
+            stream = "system"
+        else:
+            # No stream indicator and no system source — treat as user stdout.
+            # This covers apps that write to stdout without stream metadata.
+            stream = "stdout"
 
     # Extract optional metadata
     timestamp = raw.get("timestamp") or raw.get("time") or raw.get("ts") or ""
@@ -291,13 +319,29 @@ class LogDrainServer:
         await writer.drain()
 
     async def _route_entries(self, entries: list[dict[str, Any]]) -> None:
-        """Parse and route log entries to appropriate queues."""
+        """Parse and route log entries to appropriate queues.
+
+        Only user-process output is forwarded:
+        - ``stdout`` is always included.
+        - ``stderr`` is included when *include_stderr* is True.
+        - ``system`` (Fly infrastructure messages) is **always** filtered out;
+          these are lifecycle events produced by Fly, not the user's process.
+        """
         for raw in entries:
             entry = parse_log_entry(raw)
             if entry is None:
                 continue
 
-            # Filter by stream type
+            # System-stream entries are Fly infrastructure messages — skip them.
+            if entry.stream == "system":
+                logger.debug(
+                    "Filtered system log from machine %s: %s",
+                    entry.machine_id,
+                    entry.message[:80],
+                )
+                continue
+
+            # Forward stdout; forward stderr only when explicitly requested.
             if entry.stream == "stdout" or (self.include_stderr and entry.stream == "stderr"):
                 await self.collector.push(entry.machine_id, entry.message)
 

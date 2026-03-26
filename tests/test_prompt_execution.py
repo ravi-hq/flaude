@@ -92,6 +92,7 @@ def prompt_env(tmp_path: Path):
     env = {
         "PATH": f"{bin_dir}:{os.environ.get('PATH', '/usr/bin:/bin')}",
         "HOME": str(home),
+        "CLAUDE_CODE_OAUTH_TOKEN": "test-oauth-token",
     }
 
     return {

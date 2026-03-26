@@ -68,6 +68,7 @@ def mock_env(tmp_path: Path):
         "PATH": f"{bin_dir}:{os.environ.get('PATH', '/usr/bin:/bin')}",
         "HOME": str(tmp_path / "home"),
         "FLAUDE_PROMPT": "Fix the tests",
+        "CLAUDE_CODE_OAUTH_TOKEN": "test-oauth-token",
     }
 
     # Create home directory for git config

@@ -11,6 +11,7 @@ import respx
 from flaude.app import (
     DEFAULT_APP_PREFIX,
     DEFAULT_ORG,
+    DEFAULT_REGION,
     FlyApp,
     create_app,
     ensure_app,
@@ -150,3 +151,83 @@ async def test_ensure_app_custom_org():
     assert result == FlyApp(name="org-app", org="my-org")
     body = json.loads(route.calls.last.request.content)
     assert body["org_slug"] == "my-org"
+
+
+# ---------------------------------------------------------------------------
+# region support
+# ---------------------------------------------------------------------------
+
+
+def test_flyapp_has_default_region():
+    """FlyApp uses DEFAULT_REGION when region is not specified."""
+    app = FlyApp(name="my-app", org="personal")
+    assert app.region == DEFAULT_REGION
+
+
+def test_flyapp_stores_custom_region():
+    """FlyApp stores a custom region."""
+    app = FlyApp(name="my-app", org="personal", region="lax")
+    assert app.region == "lax"
+
+
+@respx.mock
+async def test_create_app_custom_region():
+    """create_app stores custom region in the returned FlyApp."""
+    respx.post(f"{FLY_API_BASE}/apps").mock(
+        return_value=httpx.Response(201, json={"name": "lax-app"})
+    )
+    result = await create_app("lax-app", org="personal", region="lax", token="test-token")
+    assert result == FlyApp(name="lax-app", org="personal", region="lax")
+    assert result.region == "lax"
+
+
+@respx.mock
+async def test_create_app_default_region():
+    """create_app uses DEFAULT_REGION when region is not specified."""
+    respx.post(f"{FLY_API_BASE}/apps").mock(
+        return_value=httpx.Response(201, json={"name": "default-region-app"})
+    )
+    result = await create_app("default-region-app", token="test-token")
+    assert result.region == DEFAULT_REGION
+
+
+@respx.mock
+async def test_create_app_does_not_send_region_in_payload():
+    """create_app does not send region in the API payload (Fly manages regions at machine level)."""
+    route = respx.post(f"{FLY_API_BASE}/apps").mock(
+        return_value=httpx.Response(201, json={"name": "region-test"})
+    )
+    await create_app("region-test", region="fra", token="test-token")
+    body = json.loads(route.calls.last.request.content)
+    # region is NOT sent to the app creation API — it's a machine-level concept
+    assert "region" not in body
+    assert body == {"app_name": "region-test", "org_slug": DEFAULT_ORG}
+
+
+@respx.mock
+async def test_ensure_app_custom_region_on_create():
+    """ensure_app passes custom region when creating a new app."""
+    respx.get(f"{FLY_API_BASE}/apps/fra-app").mock(
+        return_value=httpx.Response(404, json={"error": "not found"})
+    )
+    respx.post(f"{FLY_API_BASE}/apps").mock(
+        return_value=httpx.Response(201, json={"name": "fra-app"})
+    )
+    result = await ensure_app("fra-app", region="fra", token="test-token")
+    assert result == FlyApp(name="fra-app", org=DEFAULT_ORG, region="fra")
+    assert result.region == "fra"
+
+
+@respx.mock
+async def test_ensure_app_region_applied_to_existing():
+    """ensure_app applies caller's region preference to an existing app."""
+    respx.get(f"{FLY_API_BASE}/apps/my-app").mock(
+        return_value=httpx.Response(
+            200,
+            json={"name": "my-app", "organization": {"slug": "personal"}},
+        )
+    )
+    # The app exists; caller wants lax region preference
+    result = await ensure_app("my-app", region="lax", token="test-token")
+    assert result.region == "lax"
+    assert result.name == "my-app"

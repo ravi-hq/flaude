@@ -9,6 +9,12 @@ WORKSPACE="${WORKSPACE:-/workspace}"
 
 echo "[flaude] Starting execution"
 
+# --- Validate required environment variables ---
+if [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
+    echo "[flaude:error] CLAUDE_CODE_OAUTH_TOKEN is not set" >&2
+    exit 1
+fi
+
 # --- Clone repos ---
 clone_repos() {
     local repos_json="${FLAUDE_REPOS:-}"

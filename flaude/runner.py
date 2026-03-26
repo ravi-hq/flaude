@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from dataclasses import dataclass
 
 from flaude.fly_client import FlyAPIError, fly_get
@@ -22,6 +23,50 @@ _POLL_INTERVAL_SECONDS = 2.0
 
 # Terminal states for a Fly machine
 _TERMINAL_STATES = frozenset({"stopped", "destroyed", "failed"})
+
+# Regex for the exit-code marker written by entrypoint.sh: [flaude:exit:N]
+_EXIT_MARKER_RE = re.compile(r"\[flaude:exit:(\d+)\]")
+
+
+def extract_exit_code_from_logs(logs: list[str]) -> int | None:
+    """Parse the ``[flaude:exit:N]`` marker written by *entrypoint.sh*.
+
+    Scans *logs* in reverse order and returns the first exit code found.
+    Returns ``None`` if no marker is present — e.g. when the container was
+    killed before the Claude Code process could write it.
+
+    This is used as a fallback when the Fly Machines API does not report
+    an exit code (which can happen if the machine is force-destroyed or
+    reaches the ``failed`` state without a clean exit).
+
+    Args:
+        logs: Log lines collected from the machine's stdout/stderr.
+
+    Returns:
+        The integer exit code extracted from ``[flaude:exit:N]``, or
+        ``None`` if no such marker is found.
+    """
+    for line in reversed(logs):
+        m = _EXIT_MARKER_RE.search(line)
+        if m:
+            return int(m.group(1))
+    return None
+
+
+def _is_failure(exit_code: int | None, state: str) -> bool:
+    """Return True if a machine run should be considered a failure.
+
+    A run is a failure when:
+    - The exit code is non-zero (e.g. Claude Code returned 1), or
+    - The machine reached the ``failed`` state, regardless of exit code
+      (this covers OOM kills, entrypoint crashes, etc. where the Fly API
+      may not populate the exit code field).
+    """
+    if exit_code is not None and exit_code != 0:
+        return True
+    if state == "failed":
+        return True
+    return False
 
 
 class MachineExitError(Exception):
@@ -305,7 +350,7 @@ async def run_and_destroy(
         wait_timeout=wait_timeout,
     )
 
-    if raise_on_failure and result.exit_code is not None and result.exit_code != 0:
+    if raise_on_failure and _is_failure(result.exit_code, result.state):
         raise MachineExitError(
             machine_id=result.machine_id,
             exit_code=result.exit_code,

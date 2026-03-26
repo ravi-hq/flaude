@@ -11,14 +11,23 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_APP_PREFIX = "flaude"
 DEFAULT_ORG = "personal"
+DEFAULT_REGION = "iad"
 
 
 @dataclass(frozen=True)
 class FlyApp:
-    """Represents a Fly.io application used by flaude."""
+    """Represents a Fly.io application used by flaude.
+
+    Attributes:
+        name: The Fly.io application name.
+        org: The Fly.io organization slug that owns the app.
+        region: The preferred region for machines created under this app.
+            Stored locally; not a Fly.io API-level concept for apps.
+    """
 
     name: str
     org: str
+    region: str = DEFAULT_REGION
 
 
 async def get_app(app_name: str, *, token: str | None = None) -> FlyApp | None:
@@ -43,26 +52,45 @@ async def create_app(
     app_name: str,
     *,
     org: str = DEFAULT_ORG,
+    region: str = DEFAULT_REGION,
     token: str | None = None,
 ) -> FlyApp:
-    """Create a new Fly.io app.
+    """Create a new Fly.io app with configurable name, org, and region.
 
-    Raises FlyAPIError if the API call fails (e.g. name taken, auth error).
+    The ``region`` is stored in the returned :class:`FlyApp` as the preferred
+    region for machines created under this app.  Fly.io assigns machines to
+    regions at machine-creation time, not at app-creation time, so this value
+    is used as a convenient default rather than sent to the app-creation API.
+
+    Args:
+        app_name: Unique name for the new Fly.io application.
+        org: Fly.io organization slug that will own the app.
+            Defaults to ``personal``.
+        region: Preferred Fly.io region for machines in this app
+            (e.g. ``iad``, ``lax``, ``fra``).  Defaults to ``iad``.
+        token: Optional explicit API token (otherwise reads ``FLY_API_TOKEN``).
+
+    Returns:
+        A :class:`FlyApp` dataclass with the app name, org, and region.
+
+    Raises:
+        FlyAPIError: If the API call fails (e.g. name taken, auth error).
     """
     payload = {
         "app_name": app_name,
         "org_slug": org,
     }
-    logger.info("Creating Fly app %r in org %r", app_name, org)
+    logger.info("Creating Fly app %r in org %r (preferred region: %s)", app_name, org, region)
     await fly_post("/apps", json=payload, token=token)
     logger.info("Fly app %r created successfully", app_name)
-    return FlyApp(name=app_name, org=org)
+    return FlyApp(name=app_name, org=org, region=region)
 
 
 async def ensure_app(
     app_name: str | None = None,
     *,
     org: str = DEFAULT_ORG,
+    region: str = DEFAULT_REGION,
     token: str | None = None,
 ) -> FlyApp:
     """Ensure a Fly.io app exists, creating it if necessary.
@@ -70,16 +98,21 @@ async def ensure_app(
     Args:
         app_name: Name for the Fly app. Defaults to ``flaude``.
         org: Fly.io organization slug. Defaults to ``personal``.
+        region: Preferred Fly.io region for machines created under this app.
+            Defaults to ``iad``.  Only applied when a new app is created.
         token: Optional explicit API token (otherwise reads FLY_API_TOKEN).
 
     Returns:
-        A FlyApp dataclass with the app name and org.
+        A FlyApp dataclass with the app name, org, and preferred region.
     """
     name = app_name or DEFAULT_APP_PREFIX
 
     existing = await get_app(name, token=token)
     if existing is not None:
         logger.info("Fly app %r already exists, reusing", name)
+        # Preserve the caller's region preference even for existing apps
+        if existing.region != region:
+            return FlyApp(name=existing.name, org=existing.org, region=region)
         return existing
 
-    return await create_app(name, org=org, token=token)
+    return await create_app(name, org=org, region=region, token=token)

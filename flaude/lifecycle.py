@@ -22,7 +22,14 @@ from typing import Any
 from flaude.log_drain import LogCollector, LogDrainServer, LogStream
 from flaude.machine import FlyMachine, create_machine
 from flaude.machine_config import MachineConfig
-from flaude.runner import MachineExitError, RunResult, _cleanup_machine, wait_for_machine_exit
+from flaude.runner import (
+    MachineExitError,
+    RunResult,
+    _cleanup_machine,
+    _is_failure,
+    extract_exit_code_from_logs,
+    wait_for_machine_exit,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -114,27 +121,37 @@ class StreamingRun:
 
         This also triggers cleanup of the log drain if not already done.
 
+        The exit code is determined from the Fly Machines API response.
+        When the API does not populate the exit code (e.g. because the
+        machine was force-destroyed or reached ``failed`` state without a
+        clean process exit), the collected log lines are searched for a
+        ``[flaude:exit:N]`` marker written by *entrypoint.sh*.
+
         Args:
             raise_on_failure: If True (default), raise :class:`MachineExitError`
-                when the machine exits with a non-zero code, including any
-                collected log lines in the exception.
+                when the machine exits with a non-zero code or a ``failed``
+                state, including any collected log lines in the exception.
 
         Raises:
-            MachineExitError: If *raise_on_failure* is True and exit code != 0.
+            MachineExitError: If *raise_on_failure* is True and the run is
+                considered a failure (non-zero exit or ``failed`` state).
         """
         try:
             run_result = await self._result_future
         finally:
             await self.cleanup()
 
-        if (
-            raise_on_failure
-            and run_result.exit_code is not None
-            and run_result.exit_code != 0
-        ):
+        # Use log-based exit code as fallback when the Fly API returns None.
+        # entrypoint.sh always writes [flaude:exit:N] before exiting so this
+        # gives us the real exit code even when the API response is incomplete.
+        effective_exit_code = run_result.exit_code
+        if effective_exit_code is None:
+            effective_exit_code = extract_exit_code_from_logs(self._collected_logs)
+
+        if raise_on_failure and _is_failure(effective_exit_code, run_result.state):
             raise MachineExitError(
                 machine_id=run_result.machine_id,
-                exit_code=run_result.exit_code,
+                exit_code=effective_exit_code,
                 state=run_result.state,
                 logs=self._collected_logs,
             )
