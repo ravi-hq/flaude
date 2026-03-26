@@ -24,3 +24,7 @@ packages = ["flaude"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+addopts = "-m 'not e2e'"
+markers = [
+    "e2e: real Fly.io integration tests (require FLY_API_TOKEN and CLAUDE_CODE_OAUTH_TOKEN)",
+]
