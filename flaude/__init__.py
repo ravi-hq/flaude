@@ -33,6 +33,7 @@ from flaude.machine import (
     stop_machine,
 )
 from flaude.machine_config import MachineConfig, RepoSpec, build_machine_config
+from flaude.fly_client import fetch_machine_logs
 from flaude.runner import (
     MachineExitError,
     RunResult,
@@ -64,6 +65,7 @@ __all__ = [
     "async_iter_queue",
     "build_machine_config",
     "extract_exit_code_from_logs",
+    "fetch_machine_logs",
     "create_machine",
     "destroy_machine",
     "docker_build",

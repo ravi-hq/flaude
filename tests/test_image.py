@@ -90,7 +90,7 @@ async def test_docker_build_calls_docker(mock_run: AsyncMock, tmp_path: Path):
     mock_run.assert_called_once()
     call_args = mock_run.call_args
     cmd = call_args[0][0]
-    assert cmd == ["docker", "build", "-t", "registry.fly.io/test-app:v1", "."]
+    assert cmd == ["docker", "build", "--platform", "linux/amd64", "-t", "registry.fly.io/test-app:v1", "."]
     assert call_args[1]["cwd"] == tmp_path
 
 

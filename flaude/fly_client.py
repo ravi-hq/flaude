@@ -2,12 +2,19 @@
 
 from __future__ import annotations
 
+import json
+import logging
 import os
 from typing import Any
 
 import httpx
 
+logger = logging.getLogger(__name__)
+
 FLY_API_BASE = "https://api.machines.dev/v1"
+
+# Fly platform API (separate from the Machines API) — used for logs
+FLY_PLATFORM_API_BASE = "https://api.fly.io"
 
 
 class FlyAPIError(Exception):
@@ -81,3 +88,62 @@ async def fly_post(path: str, **kwargs: Any) -> Any:
 
 async def fly_delete(path: str, **kwargs: Any) -> Any:
     return await fly_request("DELETE", path, **kwargs)
+
+
+async def fetch_machine_logs(
+    app_name: str,
+    machine_id: str,
+    *,
+    token: str | None = None,
+    timeout: float = 30.0,
+) -> list[str]:
+    """Fetch historical logs for a machine from the Fly platform logs API.
+
+    Uses ``GET https://api.fly.io/api/v1/apps/{app}/logs`` which provides
+    access to retained logs (~15 days). This works even after the machine
+    has stopped or been destroyed.
+
+    Note: The platform API (``api.fly.io``) uses a different auth format
+    than the Machines API — the token is sent directly as the Authorization
+    header value (e.g. ``FlyV1 ...``), not as ``Bearer <token>``.
+
+    Args:
+        app_name: The Fly app the machine belongs to.
+        machine_id: The machine ID to fetch logs for.
+        token: Explicit Fly API token.
+        timeout: HTTP request timeout in seconds.
+
+    Returns:
+        List of log message strings from the machine.
+    """
+    url = f"{FLY_PLATFORM_API_BASE}/api/v1/apps/{app_name}/logs"
+    # Platform API uses the raw token as Authorization (not Bearer)
+    raw_token = token or _get_token()
+    headers = {
+        "Authorization": raw_token,
+        "Content-Type": "application/json",
+    }
+
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        response = await client.get(
+            url,
+            headers=headers,
+            params={"instance": machine_id},
+        )
+
+    if response.status_code >= 400:
+        raise FlyAPIError(response.status_code, response.text, "GET", url)
+
+    data = response.json()
+    entries = data.get("data", [])
+
+    lines: list[str] = []
+    for entry in entries:
+        attrs = entry.get("attributes", {})
+        message = attrs.get("message", "")
+        instance = attrs.get("instance", "")
+        if instance == machine_id and message:
+            lines.append(message)
+
+    logger.info("Fetched %d log lines for machine %s", len(lines), machine_id)
+    return lines

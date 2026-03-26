@@ -202,20 +202,27 @@ async def wait_for_machine_exit(
 
 
 def _extract_exit_code(data: dict) -> int | None:
-    """Extract exit code from machine status response, if available."""
-    # Fly API nests exit info under events or status
+    """Extract exit code from machine status response, if available.
+
+    The Fly Machines API stores exit info in the event's ``request`` field:
+    ``event["request"]["exit_event"]["exit_code"]`` or
+    ``event["request"]["monitor_event"]["exit_event"]["exit_code"]``.
+    """
     events = data.get("events", [])
     for event in reversed(events):
         if event.get("type") == "exit":
-            exit_code = event.get("status", {}).get("exit_code")
-            if exit_code is not None:
-                return int(exit_code)
-    # Also check top-level status
-    status = data.get("status", {})
-    if isinstance(status, dict):
-        code = status.get("exit_code")
-        if code is not None:
-            return int(code)
+            request = event.get("request")
+            if request and isinstance(request, dict):
+                # Priority 1: monitor_event.exit_event.exit_code
+                monitor = request.get("monitor_event")
+                if isinstance(monitor, dict):
+                    exit_evt = monitor.get("exit_event")
+                    if isinstance(exit_evt, dict) and exit_evt.get("exit_code") is not None:
+                        return int(exit_evt["exit_code"])
+                # Priority 2: exit_event.exit_code
+                exit_evt = request.get("exit_event")
+                if isinstance(exit_evt, dict) and exit_evt.get("exit_code") is not None:
+                    return int(exit_evt["exit_code"])
     return None
 
 

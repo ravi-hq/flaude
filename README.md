@@ -136,12 +136,13 @@ async def main():
 
 ### Log infrastructure
 
-| Class | Purpose |
-|-------|---------|
+| Class / Function | Purpose |
+|------------------|---------|
 | `LogDrainServer` | HTTP server that receives Fly.io log drain POSTs |
 | `LogCollector` | Routes log lines to per-machine async queues |
 | `LogStream` | Async iterator over a machine's log output with timeout support |
 | `StreamingRun` | Combined async iterator + context manager for streaming executions |
+| `fetch_machine_logs()` | Fetch historical logs from Fly platform API (works after machine exits) |
 
 ### Image management
 
@@ -228,7 +229,17 @@ Optional:
 |---------|---------|
 | `FLAUDE_E2E_PRIVATE_REPO` | Full URL of a private repo to test cloning |
 
-The Docker image `registry.fly.io/flaude:latest` must be pushed before running E2E tests.
+The Docker image `registry.fly.io/flaude:latest` must be pushed before running E2E tests:
+
+```bash
+source .env && python -c "
+import asyncio
+from flaude import ensure_image
+asyncio.run(ensure_image('flaude'))
+"
+```
+
+The image is built for `linux/amd64` (required by Fly.io) regardless of your host architecture.
 
 #### Running E2E tests
 
@@ -243,7 +254,7 @@ That's it. Each test creates a real Fly machine, runs a prompt, checks the outpu
 | Test | What it proves |
 |------|---------------|
 | `test_smoke_run_and_destroy` | Full lifecycle works: create machine → run prompt → exit 0 → destroy |
-| `test_streaming_logs` | Log drain streams real output; `[flaude:exit:0]` marker appears |
+| `test_machine_logs` | Fetches logs via Fly platform API; verifies `[flaude:exit:0]` marker |
 | `test_public_repo_clone` | Public GitHub repo clones successfully before Claude Code runs |
 | `test_private_repo_clone` | Private repo clone with credentials (skipped if creds absent) |
 | `test_machine_cleanup_on_success` | Machine is actually destroyed after run (404 on get) |

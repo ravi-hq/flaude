@@ -46,7 +46,7 @@ def _stopped_response(machine_id: str, exit_code: int = 0) -> dict:
         "region": "iad",
         "instance_id": f"inst_{machine_id}",
         "events": [
-            {"type": "exit", "status": {"exit_code": exit_code}},
+            {"type": "exit", "status": "stopped", "request": {"exit_event": {"exit_code": exit_code}}},
         ],
     }
 

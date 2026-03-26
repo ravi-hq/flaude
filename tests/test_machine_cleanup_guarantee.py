@@ -64,7 +64,7 @@ def _stopped_response(machine_id: str = MACHINE_ID, exit_code: int = 0) -> dict:
         "state": "stopped",
         "region": "iad",
         "instance_id": f"inst_{machine_id}",
-        "events": [{"type": "exit", "status": {"exit_code": exit_code}}],
+        "events": [{"type": "exit", "status": "stopped", "request": {"exit_event": {"exit_code": exit_code}}}],
     }
 
 
@@ -75,7 +75,7 @@ def _failed_response(machine_id: str = MACHINE_ID, exit_code: int = 137) -> dict
         "state": "failed",
         "region": "iad",
         "instance_id": f"inst_{machine_id}",
-        "events": [{"type": "exit", "status": {"exit_code": exit_code}}],
+        "events": [{"type": "exit", "status": "stopped", "request": {"exit_event": {"exit_code": exit_code}}}],
     }
 
 

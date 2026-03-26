@@ -19,7 +19,7 @@ flaude/
 ├── lifecycle.py         # Log-streaming execution: run_with_logs → StreamingRun
 ├── machine.py           # Machine CRUD: create_machine, stop_machine, destroy_machine
 ├── machine_config.py    # Config dataclasses: MachineConfig, RepoSpec, build_machine_config
-├── fly_client.py        # Low-level HTTP: fly_get, fly_post, fly_delete, FlyAPIError
+├── fly_client.py        # Low-level HTTP: fly_get, fly_post, fly_delete, fetch_machine_logs, FlyAPIError
 ├── log_drain.py         # Log infrastructure: LogDrainServer, LogCollector, LogStream
 ├── image.py             # Docker: docker_build, docker_push, ensure_image
 ├── Dockerfile           # Container: Node.js 22 + Claude Code + git + gh CLI
@@ -91,10 +91,12 @@ LogStream(queue, item_timeout=None, total_timeout=None)    # async iterator
 ## Fly.io API interaction
 
 All API calls go through `fly_client.py` which wraps httpx:
-- Base URL: `https://api.machines.dev/v1`
-- Auth: `Bearer {FLY_API_TOKEN}` header
+- **Machines API**: `https://api.machines.dev/v1` — auth via `Bearer {FLY_API_TOKEN}`
+- **Platform API**: `https://api.fly.io` — auth via raw token as `Authorization` header (no `Bearer` prefix)
 - Machine wait: `GET /apps/{app}/machines/{id}/wait?state=stopped` (long-poll), with polling fallback
+- Log retrieval: `GET https://api.fly.io/api/v1/apps/{app}/logs?instance={machine_id}` — historical logs (~15 day retention), works after machine exit/destroy
 - Terminal states: `stopped`, `destroyed`, `failed`
+- Exit code extraction: `event["request"]["exit_event"]["exit_code"]` (or via `monitor_event` wrapper)
 
 ## Testing
 
@@ -105,7 +107,8 @@ All API calls go through `fly_client.py` which wraps httpx:
 - **Run E2E tests**: `source .env && pytest -m e2e -v`
 - **E2E requires**: `FLY_API_TOKEN` + `CLAUDE_CODE_OAUTH_TOKEN` (both in `.env`) + Docker image pushed
 - **E2E test files**: `tests/conftest.py` (fixtures), `tests/test_e2e.py` (5 tests)
-- **E2E validates**: machine lifecycle, log streaming, public/private repo clone, cleanup guarantee
+- **E2E validates**: machine lifecycle, log retrieval via platform API, public/private repo clone, cleanup guarantee
+- **Docker image**: Built with `--platform linux/amd64` (required by Fly.io, even on ARM hosts)
 
 ## Default machine spec
 

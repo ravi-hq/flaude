@@ -56,7 +56,7 @@ def _machine_stopped_response(exit_code: int = 0) -> dict:
         "region": "iad",
         "instance_id": "inst_001",
         "events": [
-            {"type": "exit", "status": {"exit_code": exit_code}},
+            {"type": "exit", "status": "stopped", "request": {"exit_event": {"exit_code": exit_code}}},
         ],
     }
 
@@ -67,17 +67,17 @@ def _machine_stopped_response(exit_code: int = 0) -> dict:
 
 
 def test_extract_exit_code_from_events():
-    data = {"events": [{"type": "exit", "status": {"exit_code": 0}}]}
+    data = {"events": [{"type": "exit", "status": "stopped", "request": {"exit_event": {"exit_code": 0}}}]}
     assert _extract_exit_code(data) == 0
 
 
 def test_extract_exit_code_nonzero():
-    data = {"events": [{"type": "exit", "status": {"exit_code": 1}}]}
+    data = {"events": [{"type": "exit", "status": "stopped", "request": {"exit_event": {"exit_code": 1}}}]}
     assert _extract_exit_code(data) == 1
 
 
-def test_extract_exit_code_from_status():
-    data = {"status": {"exit_code": 42}}
+def test_extract_exit_code_monitor_event():
+    data = {"events": [{"type": "exit", "status": "stopped", "request": {"monitor_event": {"exit_event": {"exit_code": 42}}}}]}
     assert _extract_exit_code(data) == 42
 
 
@@ -407,7 +407,7 @@ async def test_run_destroys_on_failed_machine_state():
         "region": "iad",
         "instance_id": "inst_001",
         "events": [
-            {"type": "exit", "status": {"exit_code": 137}},
+            {"type": "exit", "status": "stopped", "request": {"exit_event": {"exit_code": 137}}},
         ],
     }
 

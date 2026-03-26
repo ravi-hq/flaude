@@ -22,7 +22,7 @@ DEFAULT_TAG = "latest"
 # The flaude/ directory containing the Dockerfile, relative to the package
 # We resolve it at call time so tests can override via docker_context param.
 _PACKAGE_DIR = Path(__file__).resolve().parent
-_DEFAULT_DOCKER_CONTEXT = _PACKAGE_DIR.parent.parent / "flaude"
+_DEFAULT_DOCKER_CONTEXT = _PACKAGE_DIR
 
 
 class ImageBuildError(Exception):
@@ -107,6 +107,7 @@ async def docker_build(
     app_name: str,
     *,
     tag: str = DEFAULT_TAG,
+    platform: str = "linux/amd64",
     docker_context: Path | None = None,
     timeout: float = 600,
 ) -> str:
@@ -115,6 +116,8 @@ async def docker_build(
     Args:
         app_name: The Fly.io app name (used in the image tag).
         tag: Image tag. Defaults to ``latest``.
+        platform: Target platform for the image. Defaults to ``linux/amd64``
+            (required by Fly.io).
         docker_context: Path to the directory containing the Dockerfile.
             Defaults to the ``flaude/`` directory in the project root.
         timeout: Max seconds to wait for the build. Defaults to 600 (10 min).
@@ -143,9 +146,9 @@ async def docker_build(
             stderr="",
         )
 
-    logger.info("Building Docker image %s from %s", image, context)
+    logger.info("Building Docker image %s from %s (platform=%s)", image, context, platform)
     await _run_subprocess(
-        ["docker", "build", "-t", image, "."],
+        ["docker", "build", "--platform", platform, "-t", image, "."],
         cwd=context,
         timeout=timeout,
     )
