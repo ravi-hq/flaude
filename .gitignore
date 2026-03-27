@@ -8,3 +8,9 @@
 .venv
 dist
 site/
+__pycache__/
+*.egg-info/
+build/
+htmlcov/
+*.pyo
+.tox/

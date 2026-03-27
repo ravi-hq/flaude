@@ -7,7 +7,7 @@ Thank you for your interest in contributing!
 **Prerequisites**: Python 3.11+, [uv](https://docs.astral.sh/uv/), a Fly.io account (for E2E tests only).
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/flaude.git
+git clone https://github.com/ravi-hq/flaude.git
 cd flaude
 uv sync --extra dev
 ```

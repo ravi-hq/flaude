@@ -1,5 +1,9 @@
 site_name: flaude
 site_description: On-demand Claude Code execution on Fly.io machines
+site_url: https://ravi-hq.github.io/flaude
+repo_url: https://github.com/ravi-hq/flaude
+repo_name: ravi-hq/flaude
+edit_uri: edit/main/docs/
 
 theme:
   name: material

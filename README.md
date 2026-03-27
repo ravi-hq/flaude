@@ -1,5 +1,11 @@
 # flaude
 
+[![CI](https://github.com/ravi-hq/flaude/actions/workflows/ci.yml/badge.svg)](https://github.com/ravi-hq/flaude/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/flaude)](https://pypi.org/project/flaude/)
+[![Python](https://img.shields.io/pypi/pyversions/flaude)](https://pypi.org/project/flaude/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/ravi-hq/flaude/blob/main/LICENSE)
+[![Docs](https://img.shields.io/badge/docs-ravi--hq.github.io%2Fflaude-blue)](https://ravi-hq.github.io/flaude)
+
 On-demand Claude Code execution on [Fly.io](https://fly.io) machines.
 
 Spin up ephemeral VMs, run Claude Code prompts against your repos, stream the output back, and auto-destroy the machines when done. No persistent infrastructure required.
@@ -201,12 +207,14 @@ Set automatically on the machine by flaude:
 ## Development
 
 ```bash
-# Install with dev dependencies
-pip install -e ".[dev]"
-
-# Run unit tests (mocked, no tokens needed)
-pytest
+git clone https://github.com/ravi-hq/flaude.git
+cd flaude
+uv sync --extra dev      # install all dev dependencies
+make test                # run unit tests
+make check               # lint + type check + security scan
 ```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full contribution guide.
 
 ### E2E validation tests
 
