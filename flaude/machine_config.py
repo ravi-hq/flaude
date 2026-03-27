@@ -15,7 +15,7 @@ DEFAULT_VM_SIZE = "performance-2x"  # 2 shared CPUs, 4GB RAM
 DEFAULT_VM_CPUS = 2
 DEFAULT_VM_MEMORY_MB = 4096
 DEFAULT_REGION = "iad"
-DEFAULT_IMAGE = "registry.fly.io/flaude:latest"
+DEFAULT_IMAGE = "ghcr.io/ravi-hq/flaude:latest"
 DEFAULT_AUTO_DESTROY = True
 
 

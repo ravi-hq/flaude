@@ -280,12 +280,13 @@ async def run(
         A :class:`RunResult` with exit details.
 
     Raises:
-        MachineExitError: If the machine exits with a non-zero code.
         FlyAPIError: If machine creation fails.
-        asyncio.TimeoutError: If the machine doesn't exit within *wait_timeout*.
+        TimeoutError: If the machine doesn't exit within *wait_timeout*.
     """
     machine: FlyMachine | None = None
     destroyed = False
+    state: str = ""
+    exit_code: int | None = None
 
     try:
         machine = await create_machine(app_name, config, name=name, token=token)
@@ -304,13 +305,6 @@ async def run(
             state,
             exit_code,
         )
-
-        return RunResult(
-            machine_id=machine.id,
-            exit_code=exit_code,
-            state=state,
-            destroyed=False,  # Will be updated in finally
-        )
     finally:
         if machine is not None:
             logger.info("Destroying machine %s (finally block)", machine.id)
@@ -320,6 +314,13 @@ async def run(
                 machine.id,
                 "succeeded" if destroyed else "FAILED",
             )
+
+    return RunResult(
+        machine_id=machine.id,
+        exit_code=exit_code,
+        state=state,
+        destroyed=destroyed,
+    )
 
 
 async def run_and_destroy(
