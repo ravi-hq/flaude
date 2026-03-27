@@ -7,6 +7,14 @@ from flaude.executor import (
     ExecutionRequest,
     ExecutionResult,
 )
+from flaude.fly_client import fetch_machine_logs
+from flaude.image import (
+    ImageBuildError,
+    docker_build,
+    docker_login_fly,
+    docker_push,
+    ensure_image,
+)
 from flaude.lifecycle import StreamingRun, run_with_logs
 from flaude.log_drain import (
     LogCollector,
@@ -18,13 +26,6 @@ from flaude.log_drain import (
     parse_log_entry,
     parse_ndjson,
 )
-from flaude.image import (
-    ImageBuildError,
-    docker_build,
-    docker_login_fly,
-    docker_push,
-    ensure_image,
-)
 from flaude.machine import (
     FlyMachine,
     create_machine,
@@ -33,7 +34,6 @@ from flaude.machine import (
     stop_machine,
 )
 from flaude.machine_config import MachineConfig, RepoSpec, build_machine_config
-from flaude.fly_client import fetch_machine_logs
 from flaude.runner import (
     MachineExitError,
     RunResult,

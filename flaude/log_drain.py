@@ -243,7 +243,8 @@ class LogDrainServer:
 
         Args:
             collector: The :class:`LogCollector` that receives and routes log entries.
-            host: Network interface to bind to. Defaults to ``0.0.0.0`` (all interfaces).
+            host: Network interface to bind to. Defaults to ``0.0.0.0``
+                (all interfaces).
             port: TCP port to listen on. Use ``0`` for OS-assigned ephemeral port.
             include_stderr: If True, stderr lines are forwarded to collectors in
                 addition to stdout. Defaults to False.
@@ -341,12 +342,7 @@ class LogDrainServer:
             await self._route_entries(entries)
 
         # Send 200 OK response
-        response = (
-            b"HTTP/1.1 200 OK\r\n"
-            b"Content-Length: 0\r\n"
-            b"Connection: close\r\n"
-            b"\r\n"
-        )
+        response = b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
         writer.write(response)
         await writer.drain()
 
@@ -374,7 +370,9 @@ class LogDrainServer:
                 continue
 
             # Forward stdout; forward stderr only when explicitly requested.
-            if entry.stream == "stdout" or (self.include_stderr and entry.stream == "stderr"):
+            if entry.stream == "stdout" or (
+                self.include_stderr and entry.stream == "stderr"
+            ):
                 await self.collector.push(entry.machine_id, entry.message)
 
 
@@ -520,7 +518,7 @@ class LogStream:
                 )
             else:
                 item = await self._queue.get()
-        except asyncio.TimeoutError:
+        except TimeoutError:
             self._done = True
             self._timed_out = True
             raise StopAsyncIteration

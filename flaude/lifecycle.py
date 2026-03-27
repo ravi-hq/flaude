@@ -218,9 +218,7 @@ async def _wait_signal_destroy(
 
         # Always destroy the machine
         logger.info("Destroying machine %s (lifecycle finally)", machine.id)
-        destroyed = await _cleanup_machine(
-            app_name, machine.id, token=token
-        )
+        destroyed = await _cleanup_machine(app_name, machine.id, token=token)
         logger.info(
             "Machine %s cleanup %s",
             machine.id,

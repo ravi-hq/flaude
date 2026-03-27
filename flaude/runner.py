@@ -170,16 +170,14 @@ async def wait_for_machine_exit(
     except FlyAPIError:
         # Wait endpoint failed — fall back to polling
         logger.debug("Wait endpoint failed for %s, falling back to polling", machine_id)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         raise
 
     # Fallback: poll GET /machines/{id}
     deadline = asyncio.get_event_loop().time() + timeout
     while True:
         if asyncio.get_event_loop().time() > deadline:
-            raise asyncio.TimeoutError(
-                f"Machine {machine_id} did not exit within {timeout}s"
-            )
+            raise TimeoutError(f"Machine {machine_id} did not exit within {timeout}s")
 
         try:
             data = await fly_get(
@@ -217,7 +215,10 @@ def _extract_exit_code(data: dict) -> int | None:
                 monitor = request.get("monitor_event")
                 if isinstance(monitor, dict):
                     exit_evt = monitor.get("exit_event")
-                    if isinstance(exit_evt, dict) and exit_evt.get("exit_code") is not None:
+                    if (
+                        isinstance(exit_evt, dict)
+                        and exit_evt.get("exit_code") is not None
+                    ):
                         return int(exit_evt["exit_code"])
                 # Priority 2: exit_event.exit_code
                 exit_evt = request.get("exit_event")
@@ -313,9 +314,7 @@ async def run(
     finally:
         if machine is not None:
             logger.info("Destroying machine %s (finally block)", machine.id)
-            destroyed = await _cleanup_machine(
-                app_name, machine.id, token=token
-            )
+            destroyed = await _cleanup_machine(app_name, machine.id, token=token)
             logger.info(
                 "Machine %s cleanup %s",
                 machine.id,
@@ -332,7 +331,8 @@ async def run_and_destroy(
     wait_timeout: float = 3600.0,
     raise_on_failure: bool = True,
 ) -> RunResult:
-    """Execute a Claude Code prompt with automatic cleanup, optionally raising on failure.
+    """Execute a Claude Code prompt with automatic cleanup, optionally raising on
+    failure.
 
     This is the recommended entry point. It wraps :func:`run` and optionally
     raises :class:`MachineExitError` when the process exits with a non-zero

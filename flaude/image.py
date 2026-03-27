@@ -73,7 +73,7 @@ async def _run_subprocess(
         stdout_bytes, stderr_bytes = await asyncio.wait_for(
             proc.communicate(), timeout=timeout
         )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         proc.kill()
         await proc.wait()
         raise ImageBuildError(
@@ -146,7 +146,9 @@ async def docker_build(
             stderr="",
         )
 
-    logger.info("Building Docker image %s from %s (platform=%s)", image, context, platform)
+    logger.info(
+        "Building Docker image %s from %s (platform=%s)", image, context, platform
+    )
     await _run_subprocess(
         ["docker", "build", "--platform", platform, "-t", image, "."],
         cwd=context,

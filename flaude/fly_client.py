@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 from typing import Any
@@ -25,15 +24,13 @@ class FlyAPIError(Exception):
         self.detail = detail
         self.method = method
         self.url = url
-        super().__init__(
-            f"Fly API error {status_code} {method} {url}: {detail}"
-        )
+        super().__init__(f"Fly API error {status_code} {method} {url}: {detail}")
 
 
 def _get_token() -> str:
     token = os.environ.get("FLY_API_TOKEN", "")
     if not token:
-        raise EnvironmentError(
+        raise OSError(
             "FLY_API_TOKEN environment variable is required for Fly.io API access"
         )
     return token
@@ -75,7 +72,8 @@ async def fly_request(
     if response.status_code == 204 or not response.content:
         return None
 
-    return response.json()
+    result: dict[str, Any] | list[Any] = response.json()
+    return result
 
 
 async def fly_get(path: str, **kwargs: Any) -> Any:

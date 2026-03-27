@@ -92,7 +92,9 @@ async def create_app(
         "app_name": app_name,
         "org_slug": org,
     }
-    logger.info("Creating Fly app %r in org %r (preferred region: %s)", app_name, org, region)
+    logger.info(
+        "Creating Fly app %r in org %r (preferred region: %s)", app_name, org, region
+    )
     await fly_post("/apps", json=payload, token=token)
     logger.info("Fly app %r created successfully", app_name)
     return FlyApp(name=app_name, org=org, region=region)

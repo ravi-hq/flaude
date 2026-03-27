@@ -10,7 +10,6 @@ import json
 from dataclasses import dataclass, field
 from typing import Any
 
-
 # Sensible defaults for Claude Code workloads
 DEFAULT_VM_SIZE = "performance-2x"  # 2 shared CPUs, 4GB RAM
 DEFAULT_VM_CPUS = 2
