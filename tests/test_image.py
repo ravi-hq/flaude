@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -19,17 +18,16 @@ from flaude.image import (
     ensure_image,
 )
 
-
 # ---------------------------------------------------------------------------
 # _image_ref
 # ---------------------------------------------------------------------------
 
 
-def test_image_ref_default_tag():
+def test_image_ref_default_tag() -> None:
     assert _image_ref("my-app") == "registry.fly.io/my-app:latest"
 
 
-def test_image_ref_custom_tag():
+def test_image_ref_custom_tag() -> None:
     assert _image_ref("my-app", "v1.2.3") == "registry.fly.io/my-app:v1.2.3"
 
 
@@ -38,21 +36,21 @@ def test_image_ref_custom_tag():
 # ---------------------------------------------------------------------------
 
 
-async def test_run_subprocess_success():
+async def test_run_subprocess_success() -> None:
     """Successful command returns CompletedProcess with stdout/stderr."""
     result = await _run_subprocess(["echo", "hello"])
     assert result.returncode == 0
     assert "hello" in result.stdout
 
 
-async def test_run_subprocess_failure():
+async def test_run_subprocess_failure() -> None:
     """Non-zero exit raises ImageBuildError."""
     with pytest.raises(ImageBuildError) as exc_info:
         await _run_subprocess(["false"])
     assert exc_info.value.returncode != 0
 
 
-async def test_run_subprocess_timeout():
+async def test_run_subprocess_timeout() -> None:
     """Command exceeding timeout raises ImageBuildError."""
     with pytest.raises(ImageBuildError, match="timed out"):
         await _run_subprocess(["sleep", "60"], timeout=0.1)
@@ -63,21 +61,21 @@ async def test_run_subprocess_timeout():
 # ---------------------------------------------------------------------------
 
 
-async def test_docker_build_missing_context(tmp_path: Path):
+async def test_docker_build_missing_context(tmp_path: Path) -> None:
     """docker_build raises when the context directory doesn't exist."""
     missing = tmp_path / "nonexistent"
     with pytest.raises(ImageBuildError, match="does not exist"):
         await docker_build("my-app", docker_context=missing)
 
 
-async def test_docker_build_missing_dockerfile(tmp_path: Path):
+async def test_docker_build_missing_dockerfile(tmp_path: Path) -> None:
     """docker_build raises when Dockerfile is missing from context."""
     with pytest.raises(ImageBuildError, match="Dockerfile not found"):
         await docker_build("my-app", docker_context=tmp_path)
 
 
 @patch("flaude.image._run_subprocess", new_callable=AsyncMock)
-async def test_docker_build_calls_docker(mock_run: AsyncMock, tmp_path: Path):
+async def test_docker_build_calls_docker(mock_run: AsyncMock, tmp_path: Path) -> None:
     """docker_build invokes 'docker build' with correct args."""
     # Create a fake Dockerfile so validation passes
     (tmp_path / "Dockerfile").write_text("FROM scratch\n")
@@ -90,12 +88,20 @@ async def test_docker_build_calls_docker(mock_run: AsyncMock, tmp_path: Path):
     mock_run.assert_called_once()
     call_args = mock_run.call_args
     cmd = call_args[0][0]
-    assert cmd == ["docker", "build", "--platform", "linux/amd64", "-t", "registry.fly.io/test-app:v1", "."]
+    assert cmd == [
+        "docker",
+        "build",
+        "--platform",
+        "linux/amd64",
+        "-t",
+        "registry.fly.io/test-app:v1",
+        ".",
+    ]
     assert call_args[1]["cwd"] == tmp_path
 
 
 @patch("flaude.image._run_subprocess", new_callable=AsyncMock)
-async def test_docker_build_default_tag(mock_run: AsyncMock, tmp_path: Path):
+async def test_docker_build_default_tag(mock_run: AsyncMock, tmp_path: Path) -> None:
     """docker_build uses DEFAULT_TAG when none specified."""
     (tmp_path / "Dockerfile").write_text("FROM scratch\n")
     mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
@@ -111,7 +117,7 @@ async def test_docker_build_default_tag(mock_run: AsyncMock, tmp_path: Path):
 
 
 @patch("flaude.image._run_subprocess", new_callable=AsyncMock)
-async def test_docker_login_fly_calls_flyctl(mock_run: AsyncMock):
+async def test_docker_login_fly_calls_flyctl(mock_run: AsyncMock) -> None:
     """docker_login_fly runs 'flyctl auth docker'."""
     mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
 
@@ -125,7 +131,7 @@ async def test_docker_login_fly_calls_flyctl(mock_run: AsyncMock):
 
 
 @patch("flaude.image._run_subprocess", new_callable=AsyncMock)
-async def test_docker_login_fly_no_token(mock_run: AsyncMock):
+async def test_docker_login_fly_no_token(mock_run: AsyncMock) -> None:
     """docker_login_fly works without explicit token (uses env)."""
     mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
 
@@ -142,7 +148,7 @@ async def test_docker_login_fly_no_token(mock_run: AsyncMock):
 
 
 @patch("flaude.image._run_subprocess", new_callable=AsyncMock)
-async def test_docker_push_calls_docker(mock_run: AsyncMock):
+async def test_docker_push_calls_docker(mock_run: AsyncMock) -> None:
     """docker_push runs 'docker push' with the correct image ref."""
     mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
 
@@ -165,7 +171,7 @@ async def test_ensure_image_full_pipeline(
     mock_build: AsyncMock,
     mock_login: AsyncMock,
     mock_push: AsyncMock,
-):
+) -> None:
     """ensure_image calls build → login → push in order."""
     mock_build.return_value = "registry.fly.io/e2e-app:latest"
     mock_push.return_value = "registry.fly.io/e2e-app:latest"
@@ -187,7 +193,7 @@ async def test_ensure_image_build_failure_stops_pipeline(
     mock_build: AsyncMock,
     mock_login: AsyncMock,
     mock_push: AsyncMock,
-):
+) -> None:
     """ensure_image does not login/push if build fails."""
     mock_build.side_effect = ImageBuildError("build broke", returncode=1, stderr="err")
 
@@ -206,7 +212,7 @@ async def test_ensure_image_custom_params(
     mock_login: AsyncMock,
     mock_push: AsyncMock,
     tmp_path: Path,
-):
+) -> None:
     """ensure_image forwards all parameters correctly."""
     mock_build.return_value = "registry.fly.io/custom:v2"
     mock_push.return_value = "registry.fly.io/custom:v2"

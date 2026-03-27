@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-import pytest
+from typing import Any
+
 import httpx
+import pytest
 import respx
 
 from flaude.fly_client import FLY_API_BASE, FlyAPIError
@@ -20,13 +22,13 @@ APP = "flaude-test"
 TOKEN = "test-fly-token"
 
 
-def _machine_config(**overrides) -> MachineConfig:
+def _machine_config(**overrides: Any) -> MachineConfig:
     defaults = {
         "claude_code_oauth_token": "oauth-tok",
         "prompt": "Fix the bug",
     }
     defaults.update(overrides)
-    return MachineConfig(**defaults)
+    return MachineConfig(**defaults)  # type: ignore[arg-type]
 
 
 def _machine_response(
@@ -52,7 +54,7 @@ def _machine_response(
 
 
 @respx.mock
-async def test_create_machine_returns_fly_machine():
+async def test_create_machine_returns_fly_machine() -> None:
     """create_machine POSTs to the API and returns a FlyMachine."""
     route = respx.post(f"{FLY_API_BASE}/apps/{APP}/machines").mock(
         return_value=httpx.Response(200, json=_machine_response())
@@ -71,7 +73,7 @@ async def test_create_machine_returns_fly_machine():
 
 
 @respx.mock
-async def test_create_machine_sends_correct_payload():
+async def test_create_machine_sends_correct_payload() -> None:
     """The POST body contains the machine config payload."""
     route = respx.post(f"{FLY_API_BASE}/apps/{APP}/machines").mock(
         return_value=httpx.Response(200, json=_machine_response())
@@ -90,15 +92,13 @@ async def test_create_machine_sends_correct_payload():
 
 
 @respx.mock
-async def test_create_machine_with_name():
+async def test_create_machine_with_name() -> None:
     """When a name is given it appears in the request payload."""
     route = respx.post(f"{FLY_API_BASE}/apps/{APP}/machines").mock(
         return_value=httpx.Response(200, json=_machine_response(name="my-box"))
     )
 
-    machine = await create_machine(
-        APP, _machine_config(), name="my-box", token=TOKEN
-    )
+    machine = await create_machine(APP, _machine_config(), name="my-box", token=TOKEN)
 
     import json
 
@@ -108,7 +108,7 @@ async def test_create_machine_with_name():
 
 
 @respx.mock
-async def test_create_machine_raises_on_api_error():
+async def test_create_machine_raises_on_api_error() -> None:
     """FlyAPIError is raised when the API returns a non-2xx status."""
     respx.post(f"{FLY_API_BASE}/apps/{APP}/machines").mock(
         return_value=httpx.Response(422, text="invalid config")
@@ -120,14 +120,14 @@ async def test_create_machine_raises_on_api_error():
     assert exc_info.value.status_code == 422
 
 
-def test_create_machine_validates_config():
+def test_create_machine_validates_config() -> None:
     """create_machine propagates ValueError from build_machine_config."""
     # This is sync because we expect the error before any await
     # Actually we need to await it — use pytest.raises in an async test
 
 
 @respx.mock
-async def test_create_machine_validates_missing_prompt():
+async def test_create_machine_validates_missing_prompt() -> None:
     """ValueError raised when prompt is empty."""
     cfg = MachineConfig(claude_code_oauth_token="tok", prompt="")
     with pytest.raises(ValueError, match="prompt"):
@@ -135,7 +135,7 @@ async def test_create_machine_validates_missing_prompt():
 
 
 @respx.mock
-async def test_create_machine_validates_missing_token():
+async def test_create_machine_validates_missing_token() -> None:
     """ValueError raised when oauth token is empty."""
     cfg = MachineConfig(prompt="hello")
     with pytest.raises(ValueError, match="claude_code_oauth_token"):
@@ -148,12 +148,10 @@ async def test_create_machine_validates_missing_token():
 
 
 @respx.mock
-async def test_get_machine_returns_current_state():
+async def test_get_machine_returns_current_state() -> None:
     """get_machine fetches and returns the machine state."""
     respx.get(f"{FLY_API_BASE}/apps/{APP}/machines/m_abc123").mock(
-        return_value=httpx.Response(
-            200, json=_machine_response(state="started")
-        )
+        return_value=httpx.Response(200, json=_machine_response(state="started"))
     )
 
     machine = await get_machine(APP, "m_abc123", token=TOKEN)
@@ -162,7 +160,7 @@ async def test_get_machine_returns_current_state():
 
 
 @respx.mock
-async def test_get_machine_raises_on_404():
+async def test_get_machine_raises_on_404() -> None:
     """FlyAPIError raised when machine not found."""
     respx.get(f"{FLY_API_BASE}/apps/{APP}/machines/m_gone").mock(
         return_value=httpx.Response(404, text="not found")
@@ -179,43 +177,43 @@ async def test_get_machine_raises_on_404():
 
 
 @respx.mock
-async def test_stop_machine_sends_post():
+async def test_stop_machine_sends_post() -> None:
     """stop_machine POSTs to the stop endpoint."""
-    route = respx.post(
-        f"{FLY_API_BASE}/apps/{APP}/machines/m_abc123/stop"
-    ).mock(return_value=httpx.Response(200, json={}))
+    route = respx.post(f"{FLY_API_BASE}/apps/{APP}/machines/m_abc123/stop").mock(
+        return_value=httpx.Response(200, json={})
+    )
 
     await stop_machine(APP, "m_abc123", token=TOKEN)
     assert route.called
 
 
 @respx.mock
-async def test_stop_machine_ignores_404():
+async def test_stop_machine_ignores_404() -> None:
     """stop_machine silently ignores 404 (already gone)."""
-    respx.post(
-        f"{FLY_API_BASE}/apps/{APP}/machines/m_gone/stop"
-    ).mock(return_value=httpx.Response(404, text="not found"))
+    respx.post(f"{FLY_API_BASE}/apps/{APP}/machines/m_gone/stop").mock(
+        return_value=httpx.Response(404, text="not found")
+    )
 
     # Should not raise
     await stop_machine(APP, "m_gone", token=TOKEN)
 
 
 @respx.mock
-async def test_stop_machine_ignores_409():
+async def test_stop_machine_ignores_409() -> None:
     """stop_machine silently ignores 409 (already stopped)."""
-    respx.post(
-        f"{FLY_API_BASE}/apps/{APP}/machines/m_stopped/stop"
-    ).mock(return_value=httpx.Response(409, text="conflict"))
+    respx.post(f"{FLY_API_BASE}/apps/{APP}/machines/m_stopped/stop").mock(
+        return_value=httpx.Response(409, text="conflict")
+    )
 
     await stop_machine(APP, "m_stopped", token=TOKEN)
 
 
 @respx.mock
-async def test_stop_machine_raises_on_other_errors():
+async def test_stop_machine_raises_on_other_errors() -> None:
     """stop_machine re-raises non-404/409 errors."""
-    respx.post(
-        f"{FLY_API_BASE}/apps/{APP}/machines/m_abc123/stop"
-    ).mock(return_value=httpx.Response(500, text="server error"))
+    respx.post(f"{FLY_API_BASE}/apps/{APP}/machines/m_abc123/stop").mock(
+        return_value=httpx.Response(500, text="server error")
+    )
 
     with pytest.raises(FlyAPIError) as exc_info:
         await stop_machine(APP, "m_abc123", token=TOKEN)
@@ -228,7 +226,7 @@ async def test_stop_machine_raises_on_other_errors():
 
 
 @respx.mock
-async def test_destroy_machine_sends_delete_with_force():
+async def test_destroy_machine_sends_delete_with_force() -> None:
     """destroy_machine sends DELETE with ?force=true by default."""
     route = respx.delete(
         f"{FLY_API_BASE}/apps/{APP}/machines/m_abc123?force=true"
@@ -239,32 +237,32 @@ async def test_destroy_machine_sends_delete_with_force():
 
 
 @respx.mock
-async def test_destroy_machine_without_force():
+async def test_destroy_machine_without_force() -> None:
     """destroy_machine without force omits the query param."""
-    route = respx.delete(
-        f"{FLY_API_BASE}/apps/{APP}/machines/m_abc123"
-    ).mock(return_value=httpx.Response(200, json={}))
+    route = respx.delete(f"{FLY_API_BASE}/apps/{APP}/machines/m_abc123").mock(
+        return_value=httpx.Response(200, json={})
+    )
 
     await destroy_machine(APP, "m_abc123", force=False, token=TOKEN)
     assert route.called
 
 
 @respx.mock
-async def test_destroy_machine_ignores_404():
+async def test_destroy_machine_ignores_404() -> None:
     """destroy_machine silently ignores 404 (already destroyed)."""
-    respx.delete(
-        f"{FLY_API_BASE}/apps/{APP}/machines/m_gone?force=true"
-    ).mock(return_value=httpx.Response(404, text="not found"))
+    respx.delete(f"{FLY_API_BASE}/apps/{APP}/machines/m_gone?force=true").mock(
+        return_value=httpx.Response(404, text="not found")
+    )
 
     await destroy_machine(APP, "m_gone", token=TOKEN)
 
 
 @respx.mock
-async def test_destroy_machine_raises_on_other_errors():
+async def test_destroy_machine_raises_on_other_errors() -> None:
     """destroy_machine re-raises non-404 errors."""
-    respx.delete(
-        f"{FLY_API_BASE}/apps/{APP}/machines/m_abc123?force=true"
-    ).mock(return_value=httpx.Response(500, text="server error"))
+    respx.delete(f"{FLY_API_BASE}/apps/{APP}/machines/m_abc123?force=true").mock(
+        return_value=httpx.Response(500, text="server error")
+    )
 
     with pytest.raises(FlyAPIError) as exc_info:
         await destroy_machine(APP, "m_abc123", token=TOKEN)
@@ -291,11 +289,11 @@ def _make_machine(
 
 
 @respx.mock
-async def test_cleanup_stops_then_destroys():
+async def test_cleanup_stops_then_destroys() -> None:
     """cleanup() calls stop then destroy in sequence."""
-    stop_route = respx.post(
-        f"{FLY_API_BASE}/apps/{APP}/machines/m_abc123/stop"
-    ).mock(return_value=httpx.Response(200, json={}))
+    stop_route = respx.post(f"{FLY_API_BASE}/apps/{APP}/machines/m_abc123/stop").mock(
+        return_value=httpx.Response(200, json={})
+    )
     destroy_route = respx.delete(
         f"{FLY_API_BASE}/apps/{APP}/machines/m_abc123?force=true"
     ).mock(return_value=httpx.Response(200, json={}))
@@ -308,11 +306,11 @@ async def test_cleanup_stops_then_destroys():
 
 
 @respx.mock
-async def test_cleanup_handles_already_stopped():
+async def test_cleanup_handles_already_stopped() -> None:
     """cleanup() succeeds when stop returns 409 (already stopped)."""
-    respx.post(
-        f"{FLY_API_BASE}/apps/{APP}/machines/m_abc123/stop"
-    ).mock(return_value=httpx.Response(409, text="conflict"))
+    respx.post(f"{FLY_API_BASE}/apps/{APP}/machines/m_abc123/stop").mock(
+        return_value=httpx.Response(409, text="conflict")
+    )
     destroy_route = respx.delete(
         f"{FLY_API_BASE}/apps/{APP}/machines/m_abc123?force=true"
     ).mock(return_value=httpx.Response(200, json={}))
@@ -324,14 +322,14 @@ async def test_cleanup_handles_already_stopped():
 
 
 @respx.mock
-async def test_cleanup_handles_already_destroyed():
+async def test_cleanup_handles_already_destroyed() -> None:
     """cleanup() succeeds when both stop and destroy return 404."""
-    respx.post(
-        f"{FLY_API_BASE}/apps/{APP}/machines/m_abc123/stop"
-    ).mock(return_value=httpx.Response(404, text="not found"))
-    respx.delete(
-        f"{FLY_API_BASE}/apps/{APP}/machines/m_abc123?force=true"
-    ).mock(return_value=httpx.Response(404, text="not found"))
+    respx.post(f"{FLY_API_BASE}/apps/{APP}/machines/m_abc123/stop").mock(
+        return_value=httpx.Response(404, text="not found")
+    )
+    respx.delete(f"{FLY_API_BASE}/apps/{APP}/machines/m_abc123?force=true").mock(
+        return_value=httpx.Response(404, text="not found")
+    )
 
     machine = _make_machine()
     # Should not raise
@@ -339,11 +337,11 @@ async def test_cleanup_handles_already_destroyed():
 
 
 @respx.mock
-async def test_cleanup_propagates_stop_error():
+async def test_cleanup_propagates_stop_error() -> None:
     """cleanup() re-raises unexpected errors from stop."""
-    respx.post(
-        f"{FLY_API_BASE}/apps/{APP}/machines/m_abc123/stop"
-    ).mock(return_value=httpx.Response(500, text="server error"))
+    respx.post(f"{FLY_API_BASE}/apps/{APP}/machines/m_abc123/stop").mock(
+        return_value=httpx.Response(500, text="server error")
+    )
 
     machine = _make_machine()
     with pytest.raises(FlyAPIError) as exc_info:
@@ -352,14 +350,14 @@ async def test_cleanup_propagates_stop_error():
 
 
 @respx.mock
-async def test_cleanup_propagates_destroy_error():
+async def test_cleanup_propagates_destroy_error() -> None:
     """cleanup() re-raises unexpected errors from destroy."""
-    respx.post(
-        f"{FLY_API_BASE}/apps/{APP}/machines/m_abc123/stop"
-    ).mock(return_value=httpx.Response(200, json={}))
-    respx.delete(
-        f"{FLY_API_BASE}/apps/{APP}/machines/m_abc123?force=true"
-    ).mock(return_value=httpx.Response(500, text="server error"))
+    respx.post(f"{FLY_API_BASE}/apps/{APP}/machines/m_abc123/stop").mock(
+        return_value=httpx.Response(200, json={})
+    )
+    respx.delete(f"{FLY_API_BASE}/apps/{APP}/machines/m_abc123?force=true").mock(
+        return_value=httpx.Response(500, text="server error")
+    )
 
     machine = _make_machine()
     with pytest.raises(FlyAPIError) as exc_info:

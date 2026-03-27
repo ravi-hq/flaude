@@ -19,14 +19,13 @@ from flaude.app import (
 )
 from flaude.fly_client import FLY_API_BASE, FlyAPIError
 
-
 # ---------------------------------------------------------------------------
 # get_app
 # ---------------------------------------------------------------------------
 
 
 @respx.mock
-async def test_get_app_returns_flyapp_when_exists():
+async def test_get_app_returns_flyapp_when_exists() -> None:
     """get_app returns a FlyApp when the API returns 200."""
     respx.get(f"{FLY_API_BASE}/apps/my-app").mock(
         return_value=httpx.Response(
@@ -39,7 +38,7 @@ async def test_get_app_returns_flyapp_when_exists():
 
 
 @respx.mock
-async def test_get_app_returns_none_when_not_found():
+async def test_get_app_returns_none_when_not_found() -> None:
     """get_app returns None on 404."""
     respx.get(f"{FLY_API_BASE}/apps/nope").mock(
         return_value=httpx.Response(404, json={"error": "not found"})
@@ -49,7 +48,7 @@ async def test_get_app_returns_none_when_not_found():
 
 
 @respx.mock
-async def test_get_app_raises_on_server_error():
+async def test_get_app_raises_on_server_error() -> None:
     """get_app raises FlyAPIError on 5xx."""
     respx.get(f"{FLY_API_BASE}/apps/boom").mock(
         return_value=httpx.Response(500, text="internal error")
@@ -65,7 +64,7 @@ async def test_get_app_raises_on_server_error():
 
 
 @respx.mock
-async def test_create_app_sends_correct_payload():
+async def test_create_app_sends_correct_payload() -> None:
     """create_app POSTs with app_name and org_slug."""
     route = respx.post(f"{FLY_API_BASE}/apps").mock(
         return_value=httpx.Response(201, json={"name": "new-app"})
@@ -80,7 +79,7 @@ async def test_create_app_sends_correct_payload():
 
 
 @respx.mock
-async def test_create_app_raises_on_conflict():
+async def test_create_app_raises_on_conflict() -> None:
     """create_app raises FlyAPIError when app name is taken."""
     respx.post(f"{FLY_API_BASE}/apps").mock(
         return_value=httpx.Response(422, text="name already taken")
@@ -96,7 +95,7 @@ async def test_create_app_raises_on_conflict():
 
 
 @respx.mock
-async def test_ensure_app_reuses_existing():
+async def test_ensure_app_reuses_existing() -> None:
     """ensure_app returns existing app without creating."""
     respx.get(f"{FLY_API_BASE}/apps/my-app").mock(
         return_value=httpx.Response(
@@ -110,7 +109,7 @@ async def test_ensure_app_reuses_existing():
 
 
 @respx.mock
-async def test_ensure_app_creates_when_missing():
+async def test_ensure_app_creates_when_missing() -> None:
     """ensure_app creates app when it doesn't exist."""
     respx.get(f"{FLY_API_BASE}/apps/fresh-app").mock(
         return_value=httpx.Response(404, json={"error": "not found"})
@@ -123,7 +122,7 @@ async def test_ensure_app_creates_when_missing():
 
 
 @respx.mock
-async def test_ensure_app_uses_default_name():
+async def test_ensure_app_uses_default_name() -> None:
     """ensure_app defaults to the flaude app name prefix."""
     respx.get(f"{FLY_API_BASE}/apps/{DEFAULT_APP_PREFIX}").mock(
         return_value=httpx.Response(
@@ -139,7 +138,7 @@ async def test_ensure_app_uses_default_name():
 
 
 @respx.mock
-async def test_ensure_app_custom_org():
+async def test_ensure_app_custom_org() -> None:
     """ensure_app passes custom org to create_app."""
     respx.get(f"{FLY_API_BASE}/apps/org-app").mock(
         return_value=httpx.Response(404, json={"error": "not found"})
@@ -158,31 +157,33 @@ async def test_ensure_app_custom_org():
 # ---------------------------------------------------------------------------
 
 
-def test_flyapp_has_default_region():
+def test_flyapp_has_default_region() -> None:
     """FlyApp uses DEFAULT_REGION when region is not specified."""
     app = FlyApp(name="my-app", org="personal")
     assert app.region == DEFAULT_REGION
 
 
-def test_flyapp_stores_custom_region():
+def test_flyapp_stores_custom_region() -> None:
     """FlyApp stores a custom region."""
     app = FlyApp(name="my-app", org="personal", region="lax")
     assert app.region == "lax"
 
 
 @respx.mock
-async def test_create_app_custom_region():
+async def test_create_app_custom_region() -> None:
     """create_app stores custom region in the returned FlyApp."""
     respx.post(f"{FLY_API_BASE}/apps").mock(
         return_value=httpx.Response(201, json={"name": "lax-app"})
     )
-    result = await create_app("lax-app", org="personal", region="lax", token="test-token")
+    result = await create_app(
+        "lax-app", org="personal", region="lax", token="test-token"
+    )
     assert result == FlyApp(name="lax-app", org="personal", region="lax")
     assert result.region == "lax"
 
 
 @respx.mock
-async def test_create_app_default_region():
+async def test_create_app_default_region() -> None:
     """create_app uses DEFAULT_REGION when region is not specified."""
     respx.post(f"{FLY_API_BASE}/apps").mock(
         return_value=httpx.Response(201, json={"name": "default-region-app"})
@@ -192,8 +193,9 @@ async def test_create_app_default_region():
 
 
 @respx.mock
-async def test_create_app_does_not_send_region_in_payload():
-    """create_app does not send region in the API payload (Fly manages regions at machine level)."""
+async def test_create_app_does_not_send_region_in_payload() -> None:
+    """create_app does not send region in the payload (Fly manages regions at machine
+    level)."""
     route = respx.post(f"{FLY_API_BASE}/apps").mock(
         return_value=httpx.Response(201, json={"name": "region-test"})
     )
@@ -205,7 +207,7 @@ async def test_create_app_does_not_send_region_in_payload():
 
 
 @respx.mock
-async def test_ensure_app_custom_region_on_create():
+async def test_ensure_app_custom_region_on_create() -> None:
     """ensure_app passes custom region when creating a new app."""
     respx.get(f"{FLY_API_BASE}/apps/fra-app").mock(
         return_value=httpx.Response(404, json={"error": "not found"})
@@ -219,7 +221,7 @@ async def test_ensure_app_custom_region_on_create():
 
 
 @respx.mock
-async def test_ensure_app_region_applied_to_existing():
+async def test_ensure_app_region_applied_to_existing() -> None:
     """ensure_app applies caller's region preference to an existing app."""
     respx.get(f"{FLY_API_BASE}/apps/my-app").mock(
         return_value=httpx.Response(

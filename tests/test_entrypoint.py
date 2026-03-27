@@ -12,6 +12,7 @@ import stat
 import subprocess
 import textwrap
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -20,7 +21,7 @@ ENTRYPOINT = Path(__file__).parent.parent / "flaude" / "entrypoint.sh"
 
 
 @pytest.fixture
-def mock_env(tmp_path: Path):
+def mock_env(tmp_path: Path) -> dict[str, Any]:
     """Create a mock environment for testing the entrypoint script.
 
     Sets up:
@@ -39,7 +40,8 @@ def mock_env(tmp_path: Path):
 
     # Mock git: logs clone commands and creates target dir
     mock_git = bin_dir / "git"
-    mock_git.write_text(textwrap.dedent(f"""\
+    mock_git.write_text(
+        textwrap.dedent(f"""\
         #!/usr/bin/env bash
         echo "git $@" >> {log_file}
         # For clone commands, create the target directory
@@ -50,17 +52,20 @@ def mock_env(tmp_path: Path):
             echo "cloned" > "$target/.git"
         fi
         exit 0
-    """))
+    """)
+    )
     mock_git.chmod(mock_git.stat().st_mode | stat.S_IEXEC)
 
     # Mock claude: logs the invocation
     mock_claude = bin_dir / "claude"
-    mock_claude.write_text(textwrap.dedent(f"""\
+    mock_claude.write_text(
+        textwrap.dedent(f"""\
         #!/usr/bin/env bash
         echo "claude $@" >> {log_file}
         echo "Claude output for: $2"
         exit 0
-    """))
+    """)
+    )
     mock_claude.chmod(mock_claude.stat().st_mode | stat.S_IEXEC)
 
     # Build env dict
@@ -83,7 +88,11 @@ def mock_env(tmp_path: Path):
     }
 
 
-def _run_entrypoint(mock_env: dict, extra_env: dict | None = None, expect_fail: bool = False) -> subprocess.CompletedProcess:
+def _run_entrypoint(
+    mock_env: dict[str, Any],
+    extra_env: dict[str, str] | None = None,
+    expect_fail: bool = False,
+) -> subprocess.CompletedProcess[str]:
     """Run the entrypoint script with the mock environment."""
     env = dict(mock_env["env"])
     if extra_env:
@@ -110,11 +119,11 @@ def _run_entrypoint(mock_env: dict, extra_env: dict | None = None, expect_fail: 
     return result
 
 
-def _read_log(mock_env: dict) -> list[str]:
+def _read_log(mock_env: dict[str, Any]) -> list[str]:
     """Read the commands log file."""
-    log_file = mock_env["log_file"]
+    log_file: Path = mock_env["log_file"]
     if log_file.exists():
-        return log_file.read_text().strip().splitlines()
+        return list(log_file.read_text().strip().splitlines())
     return []
 
 
@@ -126,7 +135,7 @@ def _read_log(mock_env: dict) -> list[str]:
 class TestNoRepos:
     """Tests when no repos are specified."""
 
-    def test_runs_claude_without_repos(self, mock_env):
+    def test_runs_claude_without_repos(self, mock_env: dict[str, Any]) -> None:
         """When FLAUDE_REPOS is not set, Claude runs directly."""
         result = _run_entrypoint(mock_env)
         assert "[flaude] No repositories to clone" in result.stdout
@@ -134,12 +143,12 @@ class TestNoRepos:
         log = _read_log(mock_env)
         assert any("claude" in line for line in log)
 
-    def test_runs_claude_with_empty_repos(self, mock_env):
+    def test_runs_claude_with_empty_repos(self, mock_env: dict[str, Any]) -> None:
         """When FLAUDE_REPOS is '[]', Claude runs directly."""
         result = _run_entrypoint(mock_env, {"FLAUDE_REPOS": "[]"})
         assert "[flaude] No repositories to clone" in result.stdout
 
-    def test_runs_claude_with_empty_string(self, mock_env):
+    def test_runs_claude_with_empty_string(self, mock_env: dict[str, Any]) -> None:
         """When FLAUDE_REPOS is empty string, Claude runs directly."""
         result = _run_entrypoint(mock_env, {"FLAUDE_REPOS": ""})
         assert "[flaude] No repositories to clone" in result.stdout
@@ -153,18 +162,18 @@ class TestNoRepos:
 class TestSingleRepo:
     """Tests for cloning a single repository."""
 
-    def test_clones_single_repo(self, mock_env):
+    def test_clones_single_repo(self, mock_env: dict[str, Any]) -> None:
         """A single repo URL is cloned into /workspace/<repo-name>."""
         repos = json.dumps([{"url": "https://github.com/org/my-repo"}])
         result = _run_entrypoint(mock_env, {"FLAUDE_REPOS": repos})
 
         log = _read_log(mock_env)
-        clone_lines = [l for l in log if "git clone" in l]
+        clone_lines = [line for line in log if "git clone" in line]
         assert len(clone_lines) == 1
         assert "my-repo" in clone_lines[0]
         assert "[flaude] All 1 repositories cloned" in result.stdout
 
-    def test_single_repo_sets_workdir(self, mock_env):
+    def test_single_repo_sets_workdir(self, mock_env: dict[str, Any]) -> None:
         """With one repo, working directory is set to that repo's dir."""
         repos = json.dumps([{"url": "https://github.com/org/my-repo"}])
         result = _run_entrypoint(mock_env, {"FLAUDE_REPOS": repos})
@@ -172,26 +181,26 @@ class TestSingleRepo:
         assert "[flaude] Working directory set to" in result.stdout
         assert "my-repo" in result.stdout
 
-    def test_single_repo_with_custom_target(self, mock_env):
+    def test_single_repo_with_custom_target(self, mock_env: dict[str, Any]) -> None:
         """A repo with target_dir clones into the specified directory."""
-        repos = json.dumps([
-            {"url": "https://github.com/org/my-repo", "target_dir": "custom"}
-        ])
-        result = _run_entrypoint(mock_env, {"FLAUDE_REPOS": repos})
+        repos = json.dumps(
+            [{"url": "https://github.com/org/my-repo", "target_dir": "custom"}]
+        )
+        _run_entrypoint(mock_env, {"FLAUDE_REPOS": repos})
 
         log = _read_log(mock_env)
-        clone_lines = [l for l in log if "git clone" in l]
+        clone_lines = [line for line in log if "git clone" in line]
         assert "custom" in clone_lines[0]
 
-    def test_single_repo_with_branch(self, mock_env):
+    def test_single_repo_with_branch(self, mock_env: dict[str, Any]) -> None:
         """A repo with branch uses --branch flag."""
-        repos = json.dumps([
-            {"url": "https://github.com/org/my-repo", "branch": "develop"}
-        ])
-        result = _run_entrypoint(mock_env, {"FLAUDE_REPOS": repos})
+        repos = json.dumps(
+            [{"url": "https://github.com/org/my-repo", "branch": "develop"}]
+        )
+        _run_entrypoint(mock_env, {"FLAUDE_REPOS": repos})
 
         log = _read_log(mock_env)
-        clone_lines = [l for l in log if "git clone" in l]
+        clone_lines = [line for line in log if "git clone" in line]
         assert "--branch develop" in clone_lines[0]
 
 
@@ -203,25 +212,29 @@ class TestSingleRepo:
 class TestMultipleRepos:
     """Tests for cloning multiple repositories."""
 
-    def test_clones_multiple_repos(self, mock_env):
+    def test_clones_multiple_repos(self, mock_env: dict[str, Any]) -> None:
         """Multiple repos are all cloned."""
-        repos = json.dumps([
-            {"url": "https://github.com/org/repo-a"},
-            {"url": "https://github.com/org/repo-b"},
-        ])
+        repos = json.dumps(
+            [
+                {"url": "https://github.com/org/repo-a"},
+                {"url": "https://github.com/org/repo-b"},
+            ]
+        )
         result = _run_entrypoint(mock_env, {"FLAUDE_REPOS": repos})
 
         log = _read_log(mock_env)
-        clone_lines = [l for l in log if "git clone" in l]
+        clone_lines = [line for line in log if "git clone" in line]
         assert len(clone_lines) == 2
         assert "[flaude] All 2 repositories cloned" in result.stdout
 
-    def test_multiple_repos_stay_in_workspace(self, mock_env):
+    def test_multiple_repos_stay_in_workspace(self, mock_env: dict[str, Any]) -> None:
         """With multiple repos, working directory stays at /workspace."""
-        repos = json.dumps([
-            {"url": "https://github.com/org/repo-a"},
-            {"url": "https://github.com/org/repo-b"},
-        ])
+        repos = json.dumps(
+            [
+                {"url": "https://github.com/org/repo-a"},
+                {"url": "https://github.com/org/repo-b"},
+            ]
+        )
         result = _run_entrypoint(mock_env, {"FLAUDE_REPOS": repos})
 
         # Should NOT contain "Working directory set to" with a specific repo
@@ -236,21 +249,24 @@ class TestMultipleRepos:
 class TestGitCredentials:
     """Tests for git credential configuration."""
 
-    def test_configures_git_credentials(self, mock_env):
+    def test_configures_git_credentials(self, mock_env: dict[str, Any]) -> None:
         """Git credentials are configured when GITHUB_USERNAME and TOKEN are set."""
         repos = json.dumps([{"url": "https://github.com/org/private-repo"}])
-        result = _run_entrypoint(mock_env, {
-            "FLAUDE_REPOS": repos,
-            "GITHUB_USERNAME": "testuser",
-            "GITHUB_TOKEN": "ghp_test123",
-        })
+        result = _run_entrypoint(
+            mock_env,
+            {
+                "FLAUDE_REPOS": repos,
+                "GITHUB_USERNAME": "testuser",
+                "GITHUB_TOKEN": "ghp_test123",
+            },
+        )
 
         assert "Git credentials configured for testuser" in result.stdout
         log = _read_log(mock_env)
-        config_lines = [l for l in log if "git config" in l]
+        config_lines = [line for line in log if "git config" in line]
         assert len(config_lines) >= 1
 
-    def test_no_credentials_without_github_vars(self, mock_env):
+    def test_no_credentials_without_github_vars(self, mock_env: dict[str, Any]) -> None:
         """Git credentials are not configured without GITHUB vars."""
         repos = json.dumps([{"url": "https://github.com/org/public-repo"}])
         result = _run_entrypoint(mock_env, {"FLAUDE_REPOS": repos})
@@ -266,7 +282,7 @@ class TestGitCredentials:
 class TestErrorHandling:
     """Tests for error cases."""
 
-    def test_fails_without_prompt(self, mock_env):
+    def test_fails_without_prompt(self, mock_env: dict[str, Any]) -> None:
         """Entrypoint fails when FLAUDE_PROMPT is not set."""
         env = dict(mock_env["env"])
         del env["FLAUDE_PROMPT"]
@@ -282,7 +298,7 @@ class TestErrorHandling:
         assert result.returncode != 0
         assert "FLAUDE_PROMPT is not set" in result.stderr
 
-    def test_fails_on_invalid_json(self, mock_env):
+    def test_fails_on_invalid_json(self, mock_env: dict[str, Any]) -> None:
         """Entrypoint fails when FLAUDE_REPOS is invalid JSON."""
         result = _run_entrypoint(
             mock_env,
@@ -292,31 +308,35 @@ class TestErrorHandling:
         assert result.returncode != 0
         assert "not valid JSON" in result.stderr
 
-    def test_skips_empty_url(self, mock_env):
+    def test_skips_empty_url(self, mock_env: dict[str, Any]) -> None:
         """Repos with empty URLs are skipped with a warning."""
-        repos = json.dumps([
-            {"url": ""},
-            {"url": "https://github.com/org/valid-repo"},
-        ])
+        repos = json.dumps(
+            [
+                {"url": ""},
+                {"url": "https://github.com/org/valid-repo"},
+            ]
+        )
         result = _run_entrypoint(mock_env, {"FLAUDE_REPOS": repos})
 
         assert "has no URL, skipping" in result.stderr
         log = _read_log(mock_env)
-        clone_lines = [l for l in log if "git clone" in l]
+        clone_lines = [line for line in log if "git clone" in line]
         assert len(clone_lines) == 1
 
-    def test_fails_on_clone_failure(self, mock_env):
+    def test_fails_on_clone_failure(self, mock_env: dict[str, Any]) -> None:
         """Entrypoint fails when git clone fails."""
         # Replace mock git with one that fails on clone
         mock_git = mock_env["bin_dir"] / "git"
-        mock_git.write_text(textwrap.dedent("""\
+        mock_git.write_text(
+            textwrap.dedent("""\
             #!/usr/bin/env bash
             if [ "$1" = "clone" ]; then
                 echo "fatal: repository not found" >&2
                 exit 128
             fi
             exit 0
-        """))
+        """)
+        )
 
         repos = json.dumps([{"url": "https://github.com/org/nonexistent"}])
         result = _run_entrypoint(
@@ -336,24 +356,26 @@ class TestErrorHandling:
 class TestRepoNameDerivation:
     """Tests for deriving target directory names from URLs."""
 
-    def test_strips_dot_git_suffix(self, mock_env):
+    def test_strips_dot_git_suffix(self, mock_env: dict[str, Any]) -> None:
         """URLs ending in .git have the suffix stripped."""
         repos = json.dumps([{"url": "https://github.com/org/my-repo.git"}])
-        result = _run_entrypoint(mock_env, {"FLAUDE_REPOS": repos})
+        _run_entrypoint(mock_env, {"FLAUDE_REPOS": repos})
 
         log = _read_log(mock_env)
-        clone_lines = [l for l in log if "git clone" in l]
+        clone_lines = [line for line in log if "git clone" in line]
         # Should clone into my-repo, not my-repo.git
         assert "my-repo" in clone_lines[0]
-        assert ".git" not in clone_lines[0].split()[-1]  # target dir shouldn't end in .git
+        assert (
+            ".git" not in clone_lines[0].split()[-1]
+        )  # target dir shouldn't end in .git
 
-    def test_uses_target_dir_override(self, mock_env):
+    def test_uses_target_dir_override(self, mock_env: dict[str, Any]) -> None:
         """target_dir overrides the derived name."""
-        repos = json.dumps([
-            {"url": "https://github.com/org/my-repo", "target_dir": "custom-name"}
-        ])
-        result = _run_entrypoint(mock_env, {"FLAUDE_REPOS": repos})
+        repos = json.dumps(
+            [{"url": "https://github.com/org/my-repo", "target_dir": "custom-name"}]
+        )
+        _run_entrypoint(mock_env, {"FLAUDE_REPOS": repos})
 
         log = _read_log(mock_env)
-        clone_lines = [l for l in log if "git clone" in l]
+        clone_lines = [line for line in log if "git clone" in line]
         assert "custom-name" in clone_lines[0]

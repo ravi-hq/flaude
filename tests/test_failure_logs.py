@@ -2,16 +2,15 @@
 
 from __future__ import annotations
 
-import asyncio
+from typing import Any
 
 import httpx
 import pytest
 import respx
 
 from flaude.fly_client import FLY_API_BASE
-from flaude.log_drain import LogCollector, LogDrainServer
+from flaude.lifecycle import run_with_logs
 from flaude.machine_config import MachineConfig
-from flaude.lifecycle import StreamingRun, run_with_logs
 from flaude.runner import MachineExitError, run_and_destroy
 
 APP = "flaude-test"
@@ -19,13 +18,13 @@ TOKEN = "test-fly-token"
 MACHINE_ID = "m_fail123"
 
 
-def _config(**overrides) -> MachineConfig:
+def _config(**overrides: Any) -> MachineConfig:
     defaults = {
         "claude_code_oauth_token": "oauth-tok",
         "prompt": "Fix the bug",
     }
     defaults.update(overrides)
-    return MachineConfig(**defaults)
+    return MachineConfig(**defaults)  # type: ignore[arg-type]
 
 
 def _machine_response(*, machine_id: str = MACHINE_ID, state: str = "created") -> dict:
@@ -45,7 +44,13 @@ def _stopped_response(exit_code: int = 0, machine_id: str = MACHINE_ID) -> dict:
         "state": "stopped",
         "region": "iad",
         "instance_id": "inst_001",
-        "events": [{"type": "exit", "status": "stopped", "request": {"exit_event": {"exit_code": exit_code}}}],
+        "events": [
+            {
+                "type": "exit",
+                "status": "stopped",
+                "request": {"exit_event": {"exit_code": exit_code}},
+            }
+        ],
     }
 
 
@@ -55,21 +60,21 @@ def _stopped_response(exit_code: int = 0, machine_id: str = MACHINE_ID) -> dict:
 
 
 class TestMachineExitErrorLogs:
-    def test_error_has_empty_logs_by_default(self):
+    def test_error_has_empty_logs_by_default(self) -> None:
         """MachineExitError has empty logs when none provided."""
         err = MachineExitError("m1", exit_code=1, state="stopped")
         assert err.logs == []
         assert err.machine_id == "m1"
         assert err.exit_code == 1
 
-    def test_error_carries_logs(self):
+    def test_error_carries_logs(self) -> None:
         """MachineExitError stores provided log lines."""
         logs = ["Starting...", "Error: something broke", "Exiting"]
         err = MachineExitError("m1", exit_code=1, state="stopped", logs=logs)
         assert err.logs == logs
         assert len(err.logs) == 3
 
-    def test_error_message_includes_log_tail(self):
+    def test_error_message_includes_log_tail(self) -> None:
         """The exception message includes a tail of the logs for quick debugging."""
         logs = ["line1", "line2", "fatal error occurred"]
         err = MachineExitError("m1", exit_code=1, state="stopped", logs=logs)
@@ -77,7 +82,7 @@ class TestMachineExitErrorLogs:
         assert "fatal error occurred" in msg
         assert "3 log lines" in msg
 
-    def test_error_message_truncates_long_logs(self):
+    def test_error_message_truncates_long_logs(self) -> None:
         """When there are >20 log lines, message shows 'Last 20 of N'."""
         logs = [f"line {i}" for i in range(50)]
         err = MachineExitError("m1", exit_code=1, state="stopped", logs=logs)
@@ -87,14 +92,14 @@ class TestMachineExitErrorLogs:
         assert "line 49" in msg
         assert "line 0" not in msg
 
-    def test_error_message_no_logs_section_when_empty(self):
+    def test_error_message_no_logs_section_when_empty(self) -> None:
         """When no logs, message doesn't include a log section."""
         err = MachineExitError("m1", exit_code=1, state="stopped")
         msg = str(err)
         assert "log lines" not in msg
         assert "code=1" in msg
 
-    def test_error_none_logs_becomes_empty_list(self):
+    def test_error_none_logs_becomes_empty_list(self) -> None:
         """Passing None for logs normalizes to empty list."""
         err = MachineExitError("m1", exit_code=1, state="stopped", logs=None)
         assert err.logs == []
@@ -107,7 +112,7 @@ class TestMachineExitErrorLogs:
 
 class TestRunAndDestroyErrorLogs:
     @respx.mock
-    async def test_raises_with_empty_logs(self):
+    async def test_raises_with_empty_logs(self) -> None:
         """run_and_destroy raises MachineExitError with empty logs (no log drain)."""
         respx.post(f"{FLY_API_BASE}/apps/{APP}/machines").mock(
             return_value=httpx.Response(200, json=_machine_response())
@@ -121,9 +126,9 @@ class TestRunAndDestroyErrorLogs:
         respx.post(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop").mock(
             return_value=httpx.Response(200, json={})
         )
-        respx.delete(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}?force=true").mock(
-            return_value=httpx.Response(200, json={})
-        )
+        respx.delete(
+            f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}?force=true"
+        ).mock(return_value=httpx.Response(200, json={}))
 
         with pytest.raises(MachineExitError) as exc_info:
             await run_and_destroy(APP, _config(), token=TOKEN)
@@ -139,8 +144,9 @@ class TestRunAndDestroyErrorLogs:
 
 class TestStreamingRunFailureLogs:
     @respx.mock
-    async def test_result_raises_with_collected_logs(self):
-        """StreamingRun.result() raises MachineExitError with collected logs on failure."""
+    async def test_result_raises_with_collected_logs(self) -> None:
+        """StreamingRun.result() raises MachineExitError with collected logs on
+        failure."""
         respx.post(f"{FLY_API_BASE}/apps/{APP}/machines").mock(
             return_value=httpx.Response(200, json=_machine_response())
         )
@@ -153,13 +159,11 @@ class TestStreamingRunFailureLogs:
         respx.post(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop").mock(
             return_value=httpx.Response(200, json={})
         )
-        respx.delete(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}?force=true").mock(
-            return_value=httpx.Response(200, json={})
-        )
+        respx.delete(
+            f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}?force=true"
+        ).mock(return_value=httpx.Response(200, json={}))
 
-        streaming = await run_with_logs(
-            APP, _config(), token=TOKEN, item_timeout=0.5
-        )
+        streaming = await run_with_logs(APP, _config(), token=TOKEN, item_timeout=0.5)
 
         # Simulate log lines arriving
         await streaming._collector.push(MACHINE_ID, "Cloning repo...")
@@ -184,8 +188,9 @@ class TestStreamingRunFailureLogs:
         assert "authentication failed" in str(err)
 
     @respx.mock
-    async def test_result_no_raise_when_disabled(self):
-        """StreamingRun.result(raise_on_failure=False) returns RunResult even on failure."""
+    async def test_result_no_raise_when_disabled(self) -> None:
+        """StreamingRun.result(raise_on_failure=False) returns RunResult even on
+        failure."""
         respx.post(f"{FLY_API_BASE}/apps/{APP}/machines").mock(
             return_value=httpx.Response(200, json=_machine_response())
         )
@@ -198,13 +203,11 @@ class TestStreamingRunFailureLogs:
         respx.post(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop").mock(
             return_value=httpx.Response(200, json={})
         )
-        respx.delete(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}?force=true").mock(
-            return_value=httpx.Response(200, json={})
-        )
+        respx.delete(
+            f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}?force=true"
+        ).mock(return_value=httpx.Response(200, json={}))
 
-        streaming = await run_with_logs(
-            APP, _config(), token=TOKEN, item_timeout=0.5
-        )
+        streaming = await run_with_logs(APP, _config(), token=TOKEN, item_timeout=0.5)
 
         # Collect logs via iteration
         async for _ in streaming:
@@ -216,7 +219,7 @@ class TestStreamingRunFailureLogs:
         assert result.machine_id == MACHINE_ID
 
     @respx.mock
-    async def test_result_no_raise_on_success(self):
+    async def test_result_no_raise_on_success(self) -> None:
         """StreamingRun.result() does not raise when exit code is 0."""
         respx.post(f"{FLY_API_BASE}/apps/{APP}/machines").mock(
             return_value=httpx.Response(200, json=_machine_response())
@@ -230,13 +233,11 @@ class TestStreamingRunFailureLogs:
         respx.post(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop").mock(
             return_value=httpx.Response(200, json={})
         )
-        respx.delete(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}?force=true").mock(
-            return_value=httpx.Response(200, json={})
-        )
+        respx.delete(
+            f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}?force=true"
+        ).mock(return_value=httpx.Response(200, json={}))
 
-        streaming = await run_with_logs(
-            APP, _config(), token=TOKEN, item_timeout=0.5
-        )
+        streaming = await run_with_logs(APP, _config(), token=TOKEN, item_timeout=0.5)
 
         async for _ in streaming:
             pass
@@ -245,7 +246,7 @@ class TestStreamingRunFailureLogs:
         assert result.exit_code == 0
 
     @respx.mock
-    async def test_collected_logs_property(self):
+    async def test_collected_logs_property(self) -> None:
         """collected_logs property returns a copy of collected log lines."""
         respx.post(f"{FLY_API_BASE}/apps/{APP}/machines").mock(
             return_value=httpx.Response(200, json=_machine_response())
@@ -259,13 +260,11 @@ class TestStreamingRunFailureLogs:
         respx.post(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop").mock(
             return_value=httpx.Response(200, json={})
         )
-        respx.delete(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}?force=true").mock(
-            return_value=httpx.Response(200, json={})
-        )
+        respx.delete(
+            f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}?force=true"
+        ).mock(return_value=httpx.Response(200, json={}))
 
-        streaming = await run_with_logs(
-            APP, _config(), token=TOKEN, item_timeout=0.5
-        )
+        streaming = await run_with_logs(APP, _config(), token=TOKEN, item_timeout=0.5)
 
         await streaming._collector.push(MACHINE_ID, "log line 1")
         await streaming._collector.push(MACHINE_ID, "log line 2")
@@ -290,7 +289,7 @@ class TestStreamingRunFailureLogs:
         assert streaming.collected_logs == ["log line 1", "log line 2"]
 
     @respx.mock
-    async def test_result_raises_without_iterating(self):
+    async def test_result_raises_without_iterating(self) -> None:
         """result() raises with empty logs if caller never iterated."""
         respx.post(f"{FLY_API_BASE}/apps/{APP}/machines").mock(
             return_value=httpx.Response(200, json=_machine_response())
@@ -304,9 +303,9 @@ class TestStreamingRunFailureLogs:
         respx.post(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop").mock(
             return_value=httpx.Response(200, json={})
         )
-        respx.delete(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}?force=true").mock(
-            return_value=httpx.Response(200, json={})
-        )
+        respx.delete(
+            f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}?force=true"
+        ).mock(return_value=httpx.Response(200, json={}))
 
         streaming = await run_with_logs(APP, _config(), token=TOKEN)
 
@@ -319,7 +318,7 @@ class TestStreamingRunFailureLogs:
         assert exc_info.value.exit_code == 1
 
     @respx.mock
-    async def test_context_manager_raises_with_logs(self):
+    async def test_context_manager_raises_with_logs(self) -> None:
         """When used as context manager, result() still raises with logs."""
         respx.post(f"{FLY_API_BASE}/apps/{APP}/machines").mock(
             return_value=httpx.Response(200, json=_machine_response())
@@ -333,9 +332,9 @@ class TestStreamingRunFailureLogs:
         respx.post(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop").mock(
             return_value=httpx.Response(200, json={})
         )
-        respx.delete(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}?force=true").mock(
-            return_value=httpx.Response(200, json={})
-        )
+        respx.delete(
+            f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}?force=true"
+        ).mock(return_value=httpx.Response(200, json={}))
 
         async with await run_with_logs(
             APP, _config(), token=TOKEN, item_timeout=0.5

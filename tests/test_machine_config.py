@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from typing import Any
 
 import pytest
 
@@ -16,20 +17,19 @@ from flaude.machine_config import (
     build_machine_config,
 )
 
-
 # ---------------------------------------------------------------------------
 # Validation
 # ---------------------------------------------------------------------------
 
 
-def test_build_raises_without_oauth_token():
+def test_build_raises_without_oauth_token() -> None:
     """build_machine_config raises ValueError when token is missing."""
     cfg = MachineConfig(prompt="hello")
     with pytest.raises(ValueError, match="claude_code_oauth_token"):
         build_machine_config(cfg)
 
 
-def test_build_raises_without_prompt():
+def test_build_raises_without_prompt() -> None:
     """build_machine_config raises ValueError when prompt is missing."""
     cfg = MachineConfig(claude_code_oauth_token="tok")
     with pytest.raises(ValueError, match="prompt"):
@@ -41,16 +41,16 @@ def test_build_raises_without_prompt():
 # ---------------------------------------------------------------------------
 
 
-def _minimal_config(**overrides) -> MachineConfig:
+def _minimal_config(**overrides: Any) -> MachineConfig:
     defaults = {
         "claude_code_oauth_token": "test-oauth-token",
         "prompt": "Fix the bug",
     }
     defaults.update(overrides)
-    return MachineConfig(**defaults)
+    return MachineConfig(**defaults)  # type: ignore[arg-type]
 
 
-def test_build_minimal_config_structure():
+def test_build_minimal_config_structure() -> None:
     """Minimal config produces a well-formed payload."""
     payload = build_machine_config(_minimal_config())
 
@@ -64,7 +64,7 @@ def test_build_minimal_config_structure():
     assert cfg["guest"]["cpu_kind"] == "performance"
 
 
-def test_build_sets_required_env_vars():
+def test_build_sets_required_env_vars() -> None:
     """Required env vars are present in the payload."""
     payload = build_machine_config(_minimal_config())
     env = payload["config"]["env"]
@@ -73,7 +73,7 @@ def test_build_sets_required_env_vars():
     assert env["FLAUDE_PROMPT"] == "Fix the bug"
 
 
-def test_build_sets_github_env_vars():
+def test_build_sets_github_env_vars() -> None:
     """GitHub credentials appear only when provided."""
     cfg = _minimal_config(github_username="octocat", github_token="ghp_abc")
     payload = build_machine_config(cfg)
@@ -83,7 +83,7 @@ def test_build_sets_github_env_vars():
     assert env["GITHUB_TOKEN"] == "ghp_abc"
 
 
-def test_build_omits_github_env_vars_when_empty():
+def test_build_omits_github_env_vars_when_empty() -> None:
     """GitHub env vars are absent when not provided."""
     payload = build_machine_config(_minimal_config())
     env = payload["config"]["env"]
@@ -97,11 +97,9 @@ def test_build_omits_github_env_vars_when_empty():
 # ---------------------------------------------------------------------------
 
 
-def test_build_serialises_repos_as_json():
+def test_build_serialises_repos_as_json() -> None:
     """Multiple repos are serialised as a JSON array in FLAUDE_REPOS."""
-    cfg = _minimal_config(
-        repos=["https://github.com/a/b", "https://github.com/c/d"]
-    )
+    cfg = _minimal_config(repos=["https://github.com/a/b", "https://github.com/c/d"])
     payload = build_machine_config(cfg)
     env = payload["config"]["env"]
     parsed = json.loads(env["FLAUDE_REPOS"])
@@ -111,7 +109,7 @@ def test_build_serialises_repos_as_json():
     assert parsed[1] == {"url": "https://github.com/c/d"}
 
 
-def test_build_omits_repos_when_empty():
+def test_build_omits_repos_when_empty() -> None:
     """FLAUDE_REPOS is absent when repos list is empty."""
     payload = build_machine_config(_minimal_config())
     assert "FLAUDE_REPOS" not in payload["config"]["env"]
@@ -122,7 +120,7 @@ def test_build_omits_repos_when_empty():
 # ---------------------------------------------------------------------------
 
 
-def test_repo_spec_defaults():
+def test_repo_spec_defaults() -> None:
     """RepoSpec has sensible defaults for branch and target_dir."""
     spec = RepoSpec(url="https://github.com/a/b")
     assert spec.url == "https://github.com/a/b"
@@ -130,14 +128,14 @@ def test_repo_spec_defaults():
     assert spec.target_dir == ""
 
 
-def test_repo_spec_with_branch_and_target():
+def test_repo_spec_with_branch_and_target() -> None:
     """RepoSpec stores branch and target_dir."""
     spec = RepoSpec(url="https://github.com/a/b", branch="main", target_dir="my-repo")
     assert spec.branch == "main"
     assert spec.target_dir == "my-repo"
 
 
-def test_build_serialises_repo_specs_with_branch():
+def test_build_serialises_repo_specs_with_branch() -> None:
     """RepoSpec with branch includes branch in JSON."""
     cfg = _minimal_config(
         repos=[RepoSpec(url="https://github.com/a/b", branch="develop")]
@@ -149,7 +147,7 @@ def test_build_serialises_repo_specs_with_branch():
     assert parsed[0] == {"url": "https://github.com/a/b", "branch": "develop"}
 
 
-def test_build_serialises_repo_specs_with_target_dir():
+def test_build_serialises_repo_specs_with_target_dir() -> None:
     """RepoSpec with target_dir includes target_dir in JSON."""
     cfg = _minimal_config(
         repos=[RepoSpec(url="https://github.com/a/b", target_dir="custom")]
@@ -160,7 +158,7 @@ def test_build_serialises_repo_specs_with_target_dir():
     assert parsed[0] == {"url": "https://github.com/a/b", "target_dir": "custom"}
 
 
-def test_build_serialises_mixed_repos():
+def test_build_serialises_mixed_repos() -> None:
     """Mixing plain URL strings and RepoSpec objects works."""
     cfg = _minimal_config(
         repos=[
@@ -173,12 +171,16 @@ def test_build_serialises_mixed_repos():
 
     assert len(parsed) == 2
     assert parsed[0] == {"url": "https://github.com/a/b"}
-    assert parsed[1] == {"url": "https://github.com/c/d", "branch": "v2", "target_dir": "dee"}
+    assert parsed[1] == {
+        "url": "https://github.com/c/d",
+        "branch": "v2",
+        "target_dir": "dee",
+    }
 
 
-def test_build_repos_invalid_type_raises():
+def test_build_repos_invalid_type_raises() -> None:
     """Non-string, non-RepoSpec items in repos raise TypeError."""
-    cfg = _minimal_config(repos=[123])  # type: ignore[list-item]
+    cfg = _minimal_config(repos=[123])
     with pytest.raises(TypeError, match="str or RepoSpec"):
         build_machine_config(cfg)
 
@@ -188,7 +190,7 @@ def test_build_repos_invalid_type_raises():
 # ---------------------------------------------------------------------------
 
 
-def test_build_custom_region_and_size():
+def test_build_custom_region_and_size() -> None:
     """Region and VM sizing can be overridden."""
     cfg = _minimal_config(region="lhr", vm_cpus=4, vm_memory_mb=8192)
     payload = build_machine_config(cfg)
@@ -198,34 +200,34 @@ def test_build_custom_region_and_size():
     assert payload["config"]["guest"]["memory_mb"] == 8192
 
 
-def test_build_custom_image():
+def test_build_custom_image() -> None:
     """Custom image overrides the default."""
     cfg = _minimal_config(image="registry.fly.io/custom:v2")
     payload = build_machine_config(cfg)
     assert payload["config"]["image"] == "registry.fly.io/custom:v2"
 
 
-def test_build_extra_env_vars():
+def test_build_extra_env_vars() -> None:
     """User-supplied env vars are merged into the payload."""
     cfg = _minimal_config(env={"MY_VAR": "hello"})
     payload = build_machine_config(cfg)
     assert payload["config"]["env"]["MY_VAR"] == "hello"
 
 
-def test_build_extra_env_can_override_defaults():
+def test_build_extra_env_can_override_defaults() -> None:
     """User-supplied env vars can override built-in ones."""
     cfg = _minimal_config(env={"FLAUDE_PROMPT": "overridden"})
     payload = build_machine_config(cfg)
     assert payload["config"]["env"]["FLAUDE_PROMPT"] == "overridden"
 
 
-def test_build_metadata_includes_managed_by():
+def test_build_metadata_includes_managed_by() -> None:
     """Metadata always includes managed_by=flaude."""
     payload = build_machine_config(_minimal_config())
     assert payload["config"]["metadata"]["managed_by"] == "flaude"
 
 
-def test_build_custom_metadata():
+def test_build_custom_metadata() -> None:
     """Custom metadata is merged with defaults."""
     cfg = _minimal_config(metadata={"run_id": "abc123"})
     payload = build_machine_config(cfg)
@@ -234,7 +236,7 @@ def test_build_custom_metadata():
     assert meta["run_id"] == "abc123"
 
 
-def test_build_auto_destroy_false():
+def test_build_auto_destroy_false() -> None:
     """auto_destroy can be disabled."""
     cfg = _minimal_config(auto_destroy=False)
     payload = build_machine_config(cfg)

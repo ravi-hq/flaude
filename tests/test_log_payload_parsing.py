@@ -12,16 +12,12 @@ from __future__ import annotations
 import asyncio
 import json
 
-import pytest
-
 from flaude.log_drain import (
     LogCollector,
     LogDrainServer,
-    LogEntry,
     parse_log_entry,
     parse_ndjson,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fly log drain format samples
@@ -32,7 +28,7 @@ from flaude.log_drain import (
 # of real payloads observed from Fly log drains.
 
 
-def _fly_stdout(machine_id: str, message: str, **extra) -> dict:
+def _fly_stdout(machine_id: str, message: str, **extra: object) -> dict:
     """Build a representative Fly log drain entry for user stdout."""
     return {
         "fly": {"app": {"instance": machine_id, "name": "myapp"}},
@@ -43,7 +39,7 @@ def _fly_stdout(machine_id: str, message: str, **extra) -> dict:
     }
 
 
-def _fly_stderr(machine_id: str, message: str, **extra) -> dict:
+def _fly_stderr(machine_id: str, message: str, **extra: object) -> dict:
     """Build a representative Fly log drain entry for user stderr."""
     return {
         "fly": {"app": {"instance": machine_id, "name": "myapp"}},
@@ -54,7 +50,9 @@ def _fly_stderr(machine_id: str, message: str, **extra) -> dict:
     }
 
 
-def _fly_system(machine_id: str, message: str, source: str = "fly", **extra) -> dict:
+def _fly_system(
+    machine_id: str, message: str, source: str = "fly", **extra: object
+) -> dict:
     """Build a Fly infrastructure/system log entry (no stream field)."""
     return {
         "fly": {"app": {"instance": machine_id, "name": "myapp"}},
@@ -73,37 +71,39 @@ def _fly_system(machine_id: str, message: str, source: str = "fly", **extra) -> 
 class TestStreamClassification:
     """Verify the three-way stdout/stderr/system classification."""
 
-    def test_explicit_stdout_stream(self):
+    def test_explicit_stdout_stream(self) -> None:
         """An entry with stream=stdout is classified as stdout."""
         entry = parse_log_entry(_fly_stdout("m-1", "hello from user"))
         assert entry is not None
         assert entry.stream == "stdout"
 
-    def test_explicit_stderr_stream(self):
+    def test_explicit_stderr_stream(self) -> None:
         """An entry with stream=stderr is classified as stderr."""
         entry = parse_log_entry(_fly_stderr("m-1", "error from user"))
         assert entry is not None
         assert entry.stream == "stderr"
 
-    def test_fly_source_classified_as_system(self):
+    def test_fly_source_classified_as_system(self) -> None:
         """Fly infrastructure messages (source=fly) become stream=system."""
         entry = parse_log_entry(_fly_system("m-1", "machine is starting", source="fly"))
         assert entry is not None
         assert entry.stream == "system"
 
-    def test_proxy_source_classified_as_system(self):
+    def test_proxy_source_classified_as_system(self) -> None:
         """Fly proxy logs (source=proxy) become stream=system."""
         entry = parse_log_entry(_fly_system("m-1", "proxy connected", source="proxy"))
         assert entry is not None
         assert entry.stream == "system"
 
-    def test_machine_source_classified_as_system(self):
+    def test_machine_source_classified_as_system(self) -> None:
         """Machine-level lifecycle logs (source=machine) become stream=system."""
-        entry = parse_log_entry(_fly_system("m-1", "stopping machine", source="machine"))
+        entry = parse_log_entry(
+            _fly_system("m-1", "stopping machine", source="machine")
+        )
         assert entry is not None
         assert entry.stream == "system"
 
-    def test_no_stream_no_source_defaults_to_stdout(self):
+    def test_no_stream_no_source_defaults_to_stdout(self) -> None:
         """Entries with neither stream nor source default to stdout.
 
         This preserves backward-compatibility for apps that emit JSON logs
@@ -114,7 +114,7 @@ class TestStreamClassification:
         assert entry is not None
         assert entry.stream == "stdout"
 
-    def test_app_source_no_stream_defaults_to_stdout(self):
+    def test_app_source_no_stream_defaults_to_stdout(self) -> None:
         """source=app with no stream field is treated as user stdout."""
         raw = {
             "fly": {"app": {"instance": "m-1"}},
@@ -125,7 +125,7 @@ class TestStreamClassification:
         assert entry is not None
         assert entry.stream == "stdout"
 
-    def test_explicit_stream_takes_precedence_over_source(self):
+    def test_explicit_stream_takes_precedence_over_source(self) -> None:
         """When both stream and source are present, stream wins."""
         raw = {
             "fly": {"app": {"instance": "m-1"}},
@@ -137,7 +137,7 @@ class TestStreamClassification:
         assert entry is not None
         assert entry.stream == "stdout"
 
-    def test_stderr_with_fly_source_uses_explicit_stream(self):
+    def test_stderr_with_fly_source_uses_explicit_stream(self) -> None:
         """Even with source=fly, an explicit stream=stderr wins."""
         raw = {
             "fly": {"app": {"instance": "m-1"}},
@@ -158,7 +158,7 @@ class TestStreamClassification:
 class TestFlyEnvelopeFormats:
     """Verify machine ID extraction across Fly log drain format variants."""
 
-    def test_v1_fly_app_instance(self):
+    def test_v1_fly_app_instance(self) -> None:
         """Fly v1: machine ID in fly.app.instance."""
         raw = {
             "fly": {"app": {"instance": "m-abc123", "name": "myapp"}},
@@ -170,7 +170,7 @@ class TestFlyEnvelopeFormats:
         assert entry.machine_id == "m-abc123"
         assert entry.app_name == "myapp"
 
-    def test_v2_fly_machine_id(self):
+    def test_v2_fly_machine_id(self) -> None:
         """Fly v2: machine ID in fly.machine.id."""
         raw = {
             "fly": {"machine": {"id": "m-xyz789"}, "app": {"name": "myapp"}},
@@ -181,21 +181,21 @@ class TestFlyEnvelopeFormats:
         assert entry is not None
         assert entry.machine_id == "m-xyz789"
 
-    def test_flat_instance_field(self):
+    def test_flat_instance_field(self) -> None:
         """Legacy flat format with top-level 'instance' field."""
         raw = {"instance": "m-flat", "message": "from flat format", "stream": "stdout"}
         entry = parse_log_entry(raw)
         assert entry is not None
         assert entry.machine_id == "m-flat"
 
-    def test_flat_machine_id_field(self):
+    def test_flat_machine_id_field(self) -> None:
         """Legacy flat format with top-level 'machine_id' field."""
         raw = {"machine_id": "m-direct", "message": "direct id", "stream": "stdout"}
         entry = parse_log_entry(raw)
         assert entry is not None
         assert entry.machine_id == "m-direct"
 
-    def test_message_field_alias_log(self):
+    def test_message_field_alias_log(self) -> None:
         """'log' field used instead of 'message' (vector/logfmt format)."""
         raw = {
             "fly": {"app": {"instance": "m-1"}},
@@ -206,7 +206,7 @@ class TestFlyEnvelopeFormats:
         assert entry is not None
         assert entry.message == "via log field"
 
-    def test_message_field_alias_msg(self):
+    def test_message_field_alias_msg(self) -> None:
         """'msg' field used instead of 'message'."""
         raw = {
             "fly": {"app": {"instance": "m-1"}},
@@ -217,7 +217,7 @@ class TestFlyEnvelopeFormats:
         assert entry is not None
         assert entry.message == "via msg field"
 
-    def test_timestamp_variants(self):
+    def test_timestamp_variants(self) -> None:
         """Various timestamp field names are normalised."""
         for ts_key in ("timestamp", "time", "ts"):
             raw = {
@@ -228,23 +228,25 @@ class TestFlyEnvelopeFormats:
             }
             entry = parse_log_entry(raw)
             assert entry is not None, f"Failed for ts_key={ts_key}"
-            assert entry.timestamp == "2024-06-15T12:00:00Z", f"Failed for ts_key={ts_key}"
+            assert entry.timestamp == "2024-06-15T12:00:00Z", (
+                f"Failed for ts_key={ts_key}"
+            )
 
-    def test_non_string_message_coerced(self):
+    def test_non_string_message_coerced(self) -> None:
         """Non-string message values are coerced to str."""
         raw = {"fly": {"app": {"instance": "m-1"}}, "message": 42, "stream": "stdout"}
         entry = parse_log_entry(raw)
         assert entry is not None
         assert entry.message == "42"
 
-    def test_empty_message_allowed(self):
+    def test_empty_message_allowed(self) -> None:
         """Empty message strings are preserved (blank lines are valid output)."""
         raw = {"fly": {"app": {"instance": "m-1"}}, "message": "", "stream": "stdout"}
         entry = parse_log_entry(raw)
         assert entry is not None
         assert entry.message == ""
 
-    def test_raw_dict_preserved(self):
+    def test_raw_dict_preserved(self) -> None:
         """The full raw dict is preserved on the LogEntry for introspection."""
         raw = {
             "fly": {"app": {"instance": "m-1", "name": "app"}},
@@ -265,7 +267,7 @@ class TestFlyEnvelopeFormats:
 class TestSystemMessageFiltering:
     """Verify the server filters system messages and keeps only user output."""
 
-    async def test_system_messages_always_filtered(self):
+    async def test_system_messages_always_filtered(self) -> None:
         """System stream entries (source=fly) never reach the queue."""
         collector = LogCollector()
         q = await collector.subscribe("m-1")
@@ -281,6 +283,7 @@ class TestSystemMessageFiltering:
                 _fly_system("m-1", "machine stopped", source="machine"),
             ]
             body = "\n".join(json.dumps(e) for e in entries).encode()
+            assert server.actual_port is not None
             await _http_post(server.actual_port, body)
             await asyncio.sleep(0.1)
 
@@ -291,7 +294,7 @@ class TestSystemMessageFiltering:
         finally:
             await server.stop()
 
-    async def test_system_messages_filtered_even_with_include_stderr(self):
+    async def test_system_messages_filtered_even_with_include_stderr(self) -> None:
         """System messages are filtered regardless of include_stderr setting."""
         collector = LogCollector()
         q = await collector.subscribe("m-1")
@@ -305,6 +308,7 @@ class TestSystemMessageFiltering:
                 _fly_system("m-1", "infrastructure event", source="fly"),
             ]
             body = "\n".join(json.dumps(e) for e in entries).encode()
+            assert server.actual_port is not None
             await _http_post(server.actual_port, body)
             await asyncio.sleep(0.1)
 
@@ -314,7 +318,7 @@ class TestSystemMessageFiltering:
         finally:
             await server.stop()
 
-    async def test_proxy_source_filtered(self):
+    async def test_proxy_source_filtered(self) -> None:
         """Proxy log entries (source=proxy) are classified as system and dropped."""
         collector = LogCollector()
         q = await collector.subscribe("m-1")
@@ -327,6 +331,7 @@ class TestSystemMessageFiltering:
                 _fly_stdout("m-1", "actual output"),
             ]
             body = "\n".join(json.dumps(e) for e in entries).encode()
+            assert server.actual_port is not None
             await _http_post(server.actual_port, body)
             await asyncio.sleep(0.1)
 
@@ -335,7 +340,7 @@ class TestSystemMessageFiltering:
         finally:
             await server.stop()
 
-    async def test_machine_source_filtered(self):
+    async def test_machine_source_filtered(self) -> None:
         """Machine lifecycle entries (source=machine) are dropped."""
         collector = LogCollector()
         q = await collector.subscribe("m-1")
@@ -348,6 +353,7 @@ class TestSystemMessageFiltering:
                 _fly_stdout("m-1", "final output"),
             ]
             body = "\n".join(json.dumps(e) for e in entries).encode()
+            assert server.actual_port is not None
             await _http_post(server.actual_port, body)
             await asyncio.sleep(0.1)
 
@@ -356,8 +362,9 @@ class TestSystemMessageFiltering:
         finally:
             await server.stop()
 
-    async def test_no_stream_no_source_passes_through(self):
-        """Entries with neither stream nor source field default to stdout and pass through."""
+    async def test_no_stream_no_source_passes_through(self) -> None:
+        """Entries with neither stream nor source field default to stdout and pass
+        through."""
         collector = LogCollector()
         q = await collector.subscribe("m-1")
         server = LogDrainServer(collector, port=0)
@@ -369,6 +376,7 @@ class TestSystemMessageFiltering:
                 {"fly": {"app": {"instance": "m-1"}}, "message": "plain log"},
             ]
             body = "\n".join(json.dumps(e) for e in entries).encode()
+            assert server.actual_port is not None
             await _http_post(server.actual_port, body)
             await asyncio.sleep(0.1)
 
@@ -376,7 +384,7 @@ class TestSystemMessageFiltering:
         finally:
             await server.stop()
 
-    async def test_mixed_batch_ordering_preserved(self):
+    async def test_mixed_batch_ordering_preserved(self) -> None:
         """When stdout and system entries are mixed, order of stdout is preserved."""
         collector = LogCollector()
         q = await collector.subscribe("m-1")
@@ -392,6 +400,7 @@ class TestSystemMessageFiltering:
                 _fly_stdout("m-1", "line-3"),
             ]
             body = "\n".join(json.dumps(e) for e in entries).encode()
+            assert server.actual_port is not None
             await _http_post(server.actual_port, body)
             await asyncio.sleep(0.1)
 
@@ -409,19 +418,19 @@ class TestSystemMessageFiltering:
 
 
 class TestParseNdjsonEdgeCases:
-    def test_windows_line_endings(self):
+    def test_windows_line_endings(self) -> None:
         """CRLF line endings are handled correctly."""
         body = b'{"a":1}\r\n{"b":2}\r\n'
         result = parse_ndjson(body)
         assert len(result) == 2
 
-    def test_trailing_whitespace_stripped(self):
+    def test_trailing_whitespace_stripped(self) -> None:
         """Trailing whitespace on each line is stripped before parsing."""
         body = b'{"a":1}   \n{"b":2}  '
         result = parse_ndjson(body)
         assert len(result) == 2
 
-    def test_deeply_nested_json_valid(self):
+    def test_deeply_nested_json_valid(self) -> None:
         """Deeply nested JSON objects are parsed without issue."""
         deep = {"a": {"b": {"c": {"d": "value"}}}}
         body = json.dumps(deep).encode()
@@ -429,7 +438,7 @@ class TestParseNdjsonEdgeCases:
         assert len(result) == 1
         assert result[0]["a"]["b"]["c"]["d"] == "value"
 
-    def test_unicode_in_messages(self):
+    def test_unicode_in_messages(self) -> None:
         """Unicode characters (emojis, non-ASCII) are preserved."""
         raw = {"instance": "m-1", "message": "résumé 🚀 日本語", "stream": "stdout"}
         body = json.dumps(raw, ensure_ascii=False).encode("utf-8")
@@ -448,7 +457,7 @@ class TestParseNdjsonEdgeCases:
 class TestFullPayloadRoundTrip:
     """End-to-end tests simulating a real Fly log drain POST payload."""
 
-    async def test_realistic_mixed_payload(self):
+    async def test_realistic_mixed_payload(self) -> None:
         """A realistic Fly payload containing stdout, stderr, and system entries.
 
         Simulates what Fly actually sends: machine lifecycle messages interleaved
@@ -473,13 +482,18 @@ class TestFullPayloadRoundTrip:
                 json.dumps(_fly_stdout("m-run-42", "Claude Code output line 1")),
                 json.dumps(_fly_stdout("m-run-42", "Claude Code output line 2")),
                 # Fly proxy logs
-                json.dumps(_fly_system("m-run-42", "connection established", source="proxy")),
+                json.dumps(
+                    _fly_system("m-run-42", "connection established", source="proxy")
+                ),
                 # Final user output
                 json.dumps(_fly_stdout("m-run-42", "[flaude:exit:0]")),
                 # Fly stops the machine
-                json.dumps(_fly_system("m-run-42", "[machine] stopped", source="machine")),
+                json.dumps(
+                    _fly_system("m-run-42", "[machine] stopped", source="machine")
+                ),
             ]
             body = "\n".join(payload_lines).encode()
+            assert server.actual_port is not None
             await _http_post(server.actual_port, body)
             await asyncio.sleep(0.1)
 
@@ -498,7 +512,7 @@ class TestFullPayloadRoundTrip:
         finally:
             await server.stop()
 
-    async def test_realistic_mixed_payload_with_stderr(self):
+    async def test_realistic_mixed_payload_with_stderr(self) -> None:
         """Same as above but include_stderr=True also captures user stderr."""
         collector = LogCollector()
         q = await collector.subscribe("m-run-43")
@@ -510,9 +524,12 @@ class TestFullPayloadRoundTrip:
                 json.dumps(_fly_system("m-run-43", "[machine] starting", source="fly")),
                 json.dumps(_fly_stdout("m-run-43", "stdout line")),
                 json.dumps(_fly_stderr("m-run-43", "stderr line")),
-                json.dumps(_fly_system("m-run-43", "[machine] stopped", source="machine")),
+                json.dumps(
+                    _fly_system("m-run-43", "[machine] stopped", source="machine")
+                ),
             ]
             body = "\n".join(payload_lines).encode()
+            assert server.actual_port is not None
             await _http_post(server.actual_port, body)
             await asyncio.sleep(0.1)
 
@@ -524,7 +541,7 @@ class TestFullPayloadRoundTrip:
         finally:
             await server.stop()
 
-    async def test_multiple_machines_in_one_payload(self):
+    async def test_multiple_machines_in_one_payload(self) -> None:
         """A single POST may contain log entries for multiple machines."""
         collector = LogCollector()
         qa = await collector.subscribe("m-a")
@@ -543,6 +560,7 @@ class TestFullPayloadRoundTrip:
                 json.dumps(_fly_stdout("m-b", "b-line-2")),
             ]
             body = "\n".join(payload_lines).encode()
+            assert server.actual_port is not None
             await _http_post(server.actual_port, body)
             await asyncio.sleep(0.1)
 
@@ -559,7 +577,7 @@ class TestFullPayloadRoundTrip:
         finally:
             await server.stop()
 
-    async def test_all_system_payload_delivers_nothing(self):
+    async def test_all_system_payload_delivers_nothing(self) -> None:
         """A payload consisting entirely of system messages delivers no lines."""
         collector = LogCollector()
         q = await collector.subscribe("m-1")
@@ -573,6 +591,7 @@ class TestFullPayloadRoundTrip:
                 json.dumps(_fly_system("m-1", "stopped", source="machine")),
             ]
             body = "\n".join(payload_lines).encode()
+            assert server.actual_port is not None
             await _http_post(server.actual_port, body)
             await asyncio.sleep(0.1)
 

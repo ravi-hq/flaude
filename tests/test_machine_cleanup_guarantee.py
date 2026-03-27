@@ -17,6 +17,7 @@ path can leak orphaned resources.
 from __future__ import annotations
 
 import asyncio
+from typing import Any
 
 import httpx
 import pytest
@@ -24,7 +25,7 @@ import respx
 
 from flaude.fly_client import FLY_API_BASE, FlyAPIError
 from flaude.machine_config import MachineConfig
-from flaude.runner import MachineExitError, RunResult, run, run_and_destroy
+from flaude.runner import MachineExitError, run, run_and_destroy
 
 APP = "flaude-cleanup-test"
 TOKEN = "test-fly-token"
@@ -36,18 +37,16 @@ MACHINE_ID = "m_cleanup001"
 # ---------------------------------------------------------------------------
 
 
-def _config(**overrides) -> MachineConfig:
+def _config(**overrides: Any) -> MachineConfig:
     defaults = {
         "claude_code_oauth_token": "oauth-tok",
         "prompt": "Write a hello-world script",
     }
     defaults.update(overrides)
-    return MachineConfig(**defaults)
+    return MachineConfig(**defaults)  # type: ignore[arg-type]
 
 
-def _machine_response(
-    machine_id: str = MACHINE_ID, state: str = "created"
-) -> dict:
+def _machine_response(machine_id: str = MACHINE_ID, state: str = "created") -> dict:
     return {
         "id": machine_id,
         "name": f"machine-{machine_id}",
@@ -64,7 +63,13 @@ def _stopped_response(machine_id: str = MACHINE_ID, exit_code: int = 0) -> dict:
         "state": "stopped",
         "region": "iad",
         "instance_id": f"inst_{machine_id}",
-        "events": [{"type": "exit", "status": "stopped", "request": {"exit_event": {"exit_code": exit_code}}}],
+        "events": [
+            {
+                "type": "exit",
+                "status": "stopped",
+                "request": {"exit_event": {"exit_code": exit_code}},
+            }
+        ],
     }
 
 
@@ -75,7 +80,13 @@ def _failed_response(machine_id: str = MACHINE_ID, exit_code: int = 137) -> dict
         "state": "failed",
         "region": "iad",
         "instance_id": f"inst_{machine_id}",
-        "events": [{"type": "exit", "status": "stopped", "request": {"exit_event": {"exit_code": exit_code}}}],
+        "events": [
+            {
+                "type": "exit",
+                "status": "stopped",
+                "request": {"exit_event": {"exit_code": exit_code}},
+            }
+        ],
     }
 
 
@@ -88,7 +99,7 @@ class TestDestroyOnSuccess:
     """Machine is destroyed when Claude Code exits cleanly (exit code 0)."""
 
     @respx.mock
-    async def test_destroy_called_on_zero_exit(self):
+    async def test_destroy_called_on_zero_exit(self) -> None:
         """DELETE /machines/{id} is called after exit_code=0."""
         respx.post(f"{FLY_API_BASE}/apps/{APP}/machines").mock(
             return_value=httpx.Response(200, json=_machine_response())
@@ -99,9 +110,9 @@ class TestDestroyOnSuccess:
         respx.get(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}").mock(
             return_value=httpx.Response(200, json=_stopped_response(exit_code=0))
         )
-        respx.post(
-            f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop"
-        ).mock(return_value=httpx.Response(200, json={}))
+        respx.post(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop").mock(
+            return_value=httpx.Response(200, json={})
+        )
         destroy_route = respx.delete(
             f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}?force=true"
         ).mock(return_value=httpx.Response(200, json={}))
@@ -113,7 +124,7 @@ class TestDestroyOnSuccess:
         assert destroy_route.called, "Machine must be destroyed on successful exit"
 
     @respx.mock
-    async def test_stop_then_destroy_on_success(self):
+    async def test_stop_then_destroy_on_success(self) -> None:
         """Both stop and destroy are called in sequence on success."""
         respx.post(f"{FLY_API_BASE}/apps/{APP}/machines").mock(
             return_value=httpx.Response(200, json=_machine_response())
@@ -137,7 +148,7 @@ class TestDestroyOnSuccess:
         assert destroy_route.called, "Machine must be destroyed after stop"
 
     @respx.mock
-    async def test_run_and_destroy_cleans_up_on_success(self):
+    async def test_run_and_destroy_cleans_up_on_success(self) -> None:
         """run_and_destroy also destroys the machine on exit code 0."""
         respx.post(f"{FLY_API_BASE}/apps/{APP}/machines").mock(
             return_value=httpx.Response(200, json=_machine_response())
@@ -148,9 +159,9 @@ class TestDestroyOnSuccess:
         respx.get(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}").mock(
             return_value=httpx.Response(200, json=_stopped_response(exit_code=0))
         )
-        respx.post(
-            f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop"
-        ).mock(return_value=httpx.Response(200, json={}))
+        respx.post(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop").mock(
+            return_value=httpx.Response(200, json={})
+        )
         destroy_route = respx.delete(
             f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}?force=true"
         ).mock(return_value=httpx.Response(200, json={}))
@@ -170,7 +181,7 @@ class TestDestroyOnNonZeroExit:
     """Machine is destroyed even when Claude Code exits with a non-zero code."""
 
     @respx.mock
-    async def test_destroy_on_exit_code_1(self):
+    async def test_destroy_on_exit_code_1(self) -> None:
         """Machine is destroyed when Claude Code exits with code 1."""
         respx.post(f"{FLY_API_BASE}/apps/{APP}/machines").mock(
             return_value=httpx.Response(200, json=_machine_response())
@@ -181,9 +192,9 @@ class TestDestroyOnNonZeroExit:
         respx.get(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}").mock(
             return_value=httpx.Response(200, json=_stopped_response(exit_code=1))
         )
-        respx.post(
-            f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop"
-        ).mock(return_value=httpx.Response(200, json={}))
+        respx.post(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop").mock(
+            return_value=httpx.Response(200, json={})
+        )
         destroy_route = respx.delete(
             f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}?force=true"
         ).mock(return_value=httpx.Response(200, json={}))
@@ -195,7 +206,7 @@ class TestDestroyOnNonZeroExit:
         assert destroy_route.called, "Machine must be destroyed on non-zero exit"
 
     @respx.mock
-    async def test_destroy_on_exit_code_2(self):
+    async def test_destroy_on_exit_code_2(self) -> None:
         """Machine is destroyed when Claude Code exits with code 2."""
         respx.post(f"{FLY_API_BASE}/apps/{APP}/machines").mock(
             return_value=httpx.Response(200, json=_machine_response())
@@ -206,9 +217,9 @@ class TestDestroyOnNonZeroExit:
         respx.get(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}").mock(
             return_value=httpx.Response(200, json=_stopped_response(exit_code=2))
         )
-        respx.post(
-            f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop"
-        ).mock(return_value=httpx.Response(200, json={}))
+        respx.post(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop").mock(
+            return_value=httpx.Response(200, json={})
+        )
         destroy_route = respx.delete(
             f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}?force=true"
         ).mock(return_value=httpx.Response(200, json={}))
@@ -219,7 +230,7 @@ class TestDestroyOnNonZeroExit:
         assert destroy_route.called
 
     @respx.mock
-    async def test_destroy_before_raising_machine_exit_error(self):
+    async def test_destroy_before_raising_machine_exit_error(self) -> None:
         """run_and_destroy destroys the machine BEFORE raising MachineExitError."""
         respx.post(f"{FLY_API_BASE}/apps/{APP}/machines").mock(
             return_value=httpx.Response(200, json=_machine_response())
@@ -230,9 +241,9 @@ class TestDestroyOnNonZeroExit:
         respx.get(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}").mock(
             return_value=httpx.Response(200, json=_stopped_response(exit_code=1))
         )
-        respx.post(
-            f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop"
-        ).mock(return_value=httpx.Response(200, json={}))
+        respx.post(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop").mock(
+            return_value=httpx.Response(200, json={})
+        )
         destroy_route = respx.delete(
             f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}?force=true"
         ).mock(return_value=httpx.Response(200, json={}))
@@ -248,7 +259,7 @@ class TestDestroyOnNonZeroExit:
         )
 
     @respx.mock
-    async def test_destroy_on_machine_failed_state(self):
+    async def test_destroy_on_machine_failed_state(self) -> None:
         """Machine in 'failed' state (OOM-killed, etc.) is destroyed."""
         respx.post(f"{FLY_API_BASE}/apps/{APP}/machines").mock(
             return_value=httpx.Response(200, json=_machine_response())
@@ -258,13 +269,11 @@ class TestDestroyOnNonZeroExit:
             f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/wait?state=stopped"
         ).mock(return_value=httpx.Response(500, text="unavailable"))
         respx.get(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}").mock(
-            return_value=httpx.Response(
-                200, json=_failed_response(exit_code=137)
-            )
+            return_value=httpx.Response(200, json=_failed_response(exit_code=137))
         )
-        respx.post(
-            f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop"
-        ).mock(return_value=httpx.Response(200, json={}))
+        respx.post(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop").mock(
+            return_value=httpx.Response(200, json={})
+        )
         destroy_route = respx.delete(
             f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}?force=true"
         ).mock(return_value=httpx.Response(200, json={}))
@@ -285,7 +294,7 @@ class TestDestroyOnException:
     """Machine is destroyed when exceptions occur during execution."""
 
     @respx.mock
-    async def test_destroy_on_api_error_during_wait(self):
+    async def test_destroy_on_api_error_during_wait(self) -> None:
         """Machine is destroyed when the wait API returns persistent errors."""
         respx.post(f"{FLY_API_BASE}/apps/{APP}/machines").mock(
             return_value=httpx.Response(200, json=_machine_response())
@@ -297,9 +306,9 @@ class TestDestroyOnException:
         respx.get(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}").mock(
             return_value=httpx.Response(500, text="internal error")
         )
-        respx.post(
-            f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop"
-        ).mock(return_value=httpx.Response(200, json={}))
+        respx.post(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop").mock(
+            return_value=httpx.Response(200, json={})
+        )
         destroy_route = respx.delete(
             f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}?force=true"
         ).mock(return_value=httpx.Response(200, json={}))
@@ -310,22 +319,24 @@ class TestDestroyOnException:
         assert destroy_route.called, "Machine must be destroyed after API error"
 
     @respx.mock
-    async def test_destroy_on_arbitrary_exception(self, monkeypatch):
+    async def test_destroy_on_arbitrary_exception(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Machine is destroyed when an unexpected non-API exception occurs."""
         respx.post(f"{FLY_API_BASE}/apps/{APP}/machines").mock(
             return_value=httpx.Response(200, json=_machine_response())
         )
 
-        async def _raise_runtime(*args, **kwargs):
+        async def _raise_runtime(*args: Any, **kwargs: Any) -> None:
             raise RuntimeError("simulated internal crash")
 
         import flaude.runner as runner_mod
 
         monkeypatch.setattr(runner_mod, "wait_for_machine_exit", _raise_runtime)
 
-        respx.post(
-            f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop"
-        ).mock(return_value=httpx.Response(200, json={}))
+        respx.post(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop").mock(
+            return_value=httpx.Response(200, json={})
+        )
         destroy_route = respx.delete(
             f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}?force=true"
         ).mock(return_value=httpx.Response(200, json={}))
@@ -333,25 +344,29 @@ class TestDestroyOnException:
         with pytest.raises(RuntimeError, match="simulated internal crash"):
             await run(APP, _config(), token=TOKEN)
 
-        assert destroy_route.called, "Machine must be destroyed after arbitrary exception"
+        assert destroy_route.called, (
+            "Machine must be destroyed after arbitrary exception"
+        )
 
     @respx.mock
-    async def test_destroy_on_network_error_during_wait(self, monkeypatch):
+    async def test_destroy_on_network_error_during_wait(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Machine is destroyed when a network error interrupts the wait."""
         respx.post(f"{FLY_API_BASE}/apps/{APP}/machines").mock(
             return_value=httpx.Response(200, json=_machine_response())
         )
 
-        async def _raise_network(*args, **kwargs):
+        async def _raise_network(*args: Any, **kwargs: Any) -> None:
             raise httpx.ConnectError("connection refused")
 
         import flaude.runner as runner_mod
 
         monkeypatch.setattr(runner_mod, "wait_for_machine_exit", _raise_network)
 
-        respx.post(
-            f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop"
-        ).mock(return_value=httpx.Response(200, json={}))
+        respx.post(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop").mock(
+            return_value=httpx.Response(200, json={})
+        )
         destroy_route = respx.delete(
             f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}?force=true"
         ).mock(return_value=httpx.Response(200, json={}))
@@ -362,7 +377,7 @@ class TestDestroyOnException:
         assert destroy_route.called, "Machine must be destroyed after network error"
 
     @respx.mock
-    async def test_destroy_on_task_cancellation(self):
+    async def test_destroy_on_task_cancellation(self) -> None:
         """Machine is destroyed when the asyncio task is cancelled."""
         respx.post(f"{FLY_API_BASE}/apps/{APP}/machines").mock(
             return_value=httpx.Response(200, json=_machine_response())
@@ -374,7 +389,7 @@ class TestDestroyOnException:
 
         poll_call_count = 0
 
-        async def _slow_poll(request):
+        async def _slow_poll(request: httpx.Request) -> httpx.Response:
             nonlocal poll_call_count
             poll_call_count += 1
             if poll_call_count >= 2:
@@ -384,9 +399,9 @@ class TestDestroyOnException:
         respx.get(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}").mock(
             side_effect=_slow_poll
         )
-        respx.post(
-            f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop"
-        ).mock(return_value=httpx.Response(200, json={}))
+        respx.post(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop").mock(
+            return_value=httpx.Response(200, json={})
+        )
         destroy_route = respx.delete(
             f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}?force=true"
         ).mock(return_value=httpx.Response(200, json={}))
@@ -402,7 +417,7 @@ class TestDestroyOnException:
         assert destroy_route.called, "Machine must be destroyed on task cancellation"
 
     @respx.mock
-    async def test_no_machine_to_destroy_if_create_fails(self):
+    async def test_no_machine_to_destroy_if_create_fails(self) -> None:
         """When machine creation fails, no destroy call is made (nothing to destroy)."""
         respx.post(f"{FLY_API_BASE}/apps/{APP}/machines").mock(
             return_value=httpx.Response(422, text="bad machine config")
@@ -416,7 +431,7 @@ class TestDestroyOnException:
         assert exc_info.value.status_code == 422
 
     @respx.mock
-    async def test_original_exception_propagates_even_if_cleanup_fails(self):
+    async def test_original_exception_propagates_even_if_cleanup_fails(self) -> None:
         """The original exception is raised even if cleanup itself fails."""
         respx.post(f"{FLY_API_BASE}/apps/{APP}/machines").mock(
             return_value=httpx.Response(200, json=_machine_response())
@@ -429,9 +444,9 @@ class TestDestroyOnException:
             return_value=httpx.Response(500, text="broken")
         )
         # Cleanup also fails
-        respx.post(
-            f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop"
-        ).mock(return_value=httpx.Response(500, text="stop broken"))
+        respx.post(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop").mock(
+            return_value=httpx.Response(500, text="stop broken")
+        )
         respx.delete(
             f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}?force=true"
         ).mock(return_value=httpx.Response(500, text="destroy broken"))
@@ -454,7 +469,7 @@ class TestDestroyViaLifecycle:
     """Machine is destroyed when using the log-streaming lifecycle path."""
 
     @respx.mock
-    async def test_lifecycle_destroys_on_success(self):
+    async def test_lifecycle_destroys_on_success(self) -> None:
         """run_with_logs destroys machine after clean exit."""
         from flaude.lifecycle import run_with_logs
 
@@ -467,9 +482,9 @@ class TestDestroyViaLifecycle:
         respx.get(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}").mock(
             return_value=httpx.Response(200, json=_stopped_response(exit_code=0))
         )
-        respx.post(
-            f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop"
-        ).mock(return_value=httpx.Response(200, json={}))
+        respx.post(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop").mock(
+            return_value=httpx.Response(200, json={})
+        )
         destroy_route = respx.delete(
             f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}?force=true"
         ).mock(return_value=httpx.Response(200, json={}))
@@ -479,10 +494,12 @@ class TestDestroyViaLifecycle:
         await streaming.cleanup()
 
         assert result.exit_code == 0
-        assert destroy_route.called, "Machine must be destroyed via lifecycle on success"
+        assert destroy_route.called, (
+            "Machine must be destroyed via lifecycle on success"
+        )
 
     @respx.mock
-    async def test_lifecycle_destroys_on_nonzero_exit(self):
+    async def test_lifecycle_destroys_on_nonzero_exit(self) -> None:
         """run_with_logs destroys machine after non-zero exit code."""
         from flaude.lifecycle import run_with_logs
 
@@ -495,9 +512,9 @@ class TestDestroyViaLifecycle:
         respx.get(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}").mock(
             return_value=httpx.Response(200, json=_stopped_response(exit_code=1))
         )
-        respx.post(
-            f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop"
-        ).mock(return_value=httpx.Response(200, json={}))
+        respx.post(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop").mock(
+            return_value=httpx.Response(200, json={})
+        )
         destroy_route = respx.delete(
             f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}?force=true"
         ).mock(return_value=httpx.Response(200, json={}))
@@ -507,10 +524,12 @@ class TestDestroyViaLifecycle:
             await streaming.result(raise_on_failure=True)
         await streaming.cleanup()
 
-        assert destroy_route.called, "Machine must be destroyed on non-zero exit via lifecycle"
+        assert destroy_route.called, (
+            "Machine must be destroyed on non-zero exit via lifecycle"
+        )
 
     @respx.mock
-    async def test_lifecycle_destroys_even_when_result_raises(self):
+    async def test_lifecycle_destroys_even_when_result_raises(self) -> None:
         """Machine is destroyed even when result() raises MachineExitError."""
         from flaude.lifecycle import run_with_logs
 
@@ -523,9 +542,9 @@ class TestDestroyViaLifecycle:
         respx.get(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}").mock(
             return_value=httpx.Response(200, json=_stopped_response(exit_code=42))
         )
-        respx.post(
-            f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop"
-        ).mock(return_value=httpx.Response(200, json={}))
+        respx.post(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop").mock(
+            return_value=httpx.Response(200, json={})
+        )
         destroy_route = respx.delete(
             f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}?force=true"
         ).mock(return_value=httpx.Response(200, json={}))
@@ -537,10 +556,12 @@ class TestDestroyViaLifecycle:
 
         assert exc_info.value.exit_code == 42
         # Cleanup was triggered by result()
-        assert destroy_route.called, "Machine must be destroyed even when result() raises"
+        assert destroy_route.called, (
+            "Machine must be destroyed even when result() raises"
+        )
 
     @respx.mock
-    async def test_lifecycle_destroys_on_api_error_during_wait(self):
+    async def test_lifecycle_destroys_on_api_error_during_wait(self) -> None:
         """Machine is destroyed via lifecycle when wait API fails."""
         from flaude.lifecycle import run_with_logs
 
@@ -554,9 +575,9 @@ class TestDestroyViaLifecycle:
         respx.get(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}").mock(
             return_value=httpx.Response(500, text="broken")
         )
-        respx.post(
-            f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop"
-        ).mock(return_value=httpx.Response(200, json={}))
+        respx.post(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop").mock(
+            return_value=httpx.Response(200, json={})
+        )
         destroy_route = respx.delete(
             f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}?force=true"
         ).mock(return_value=httpx.Response(200, json={}))
@@ -566,10 +587,12 @@ class TestDestroyViaLifecycle:
             await streaming.result()
         await streaming.cleanup()
 
-        assert destroy_route.called, "Machine must be destroyed after API error via lifecycle"
+        assert destroy_route.called, (
+            "Machine must be destroyed after API error via lifecycle"
+        )
 
     @respx.mock
-    async def test_lifecycle_context_manager_destroys_on_success(self):
+    async def test_lifecycle_context_manager_destroys_on_success(self) -> None:
         """async with run_with_logs destroys machine on clean exit."""
         from flaude.lifecycle import run_with_logs
 
@@ -582,9 +605,9 @@ class TestDestroyViaLifecycle:
         respx.get(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}").mock(
             return_value=httpx.Response(200, json=_stopped_response(exit_code=0))
         )
-        respx.post(
-            f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop"
-        ).mock(return_value=httpx.Response(200, json={}))
+        respx.post(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop").mock(
+            return_value=httpx.Response(200, json={})
+        )
         destroy_route = respx.delete(
             f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}?force=true"
         ).mock(return_value=httpx.Response(200, json={}))
@@ -596,8 +619,9 @@ class TestDestroyViaLifecycle:
         assert destroy_route.called, "Machine must be destroyed via context manager"
 
     @respx.mock
-    async def test_lifecycle_context_manager_destroys_on_exception(self):
-        """async with run_with_logs destroys machine when an exception escapes the body."""
+    async def test_lifecycle_context_manager_destroys_on_exception(self) -> None:
+        """async with run_with_logs destroys machine when an exception escapes the
+        body."""
         from flaude.lifecycle import run_with_logs
 
         respx.post(f"{FLY_API_BASE}/apps/{APP}/machines").mock(
@@ -609,9 +633,9 @@ class TestDestroyViaLifecycle:
         respx.get(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}").mock(
             return_value=httpx.Response(200, json=_stopped_response(exit_code=0))
         )
-        respx.post(
-            f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop"
-        ).mock(return_value=httpx.Response(200, json={}))
+        respx.post(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop").mock(
+            return_value=httpx.Response(200, json={})
+        )
         destroy_route = respx.delete(
             f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}?force=true"
         ).mock(return_value=httpx.Response(200, json={}))

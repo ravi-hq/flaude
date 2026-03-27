@@ -31,6 +31,7 @@ from flaude import (
     run_and_destroy,
 )
 from flaude.fly_client import FlyAPIError
+from flaude.machine_config import RepoSpec
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +45,7 @@ def _make_config(
     claude_token: str,
     prompt: str,
     *,
-    repos: list[str] | None = None,
+    repos: list[str | RepoSpec] | None = None,
     github_username: str = "",
     github_token: str = "",
 ) -> MachineConfig:
@@ -78,7 +79,9 @@ async def test_smoke_run_and_destroy(
             raise_on_failure=False,
         )
 
-    logger.info("Smoke test result: machine=%s exit=%s", result.machine_id, result.exit_code)
+    logger.info(
+        "Smoke test result: machine=%s exit=%s", result.machine_id, result.exit_code
+    )
     assert result.exit_code == 0, f"Expected exit code 0, got {result.exit_code}"
 
 
@@ -118,10 +121,10 @@ async def test_machine_logs(
     log_text = "\n".join(logs)
     logger.info("Log test: %d log lines for machine %s", len(logs), result.machine_id)
 
-    assert any("[flaude] Starting execution" in l for l in logs), (
+    assert any("[flaude] Starting execution" in line for line in logs), (
         f"Expected '[flaude] Starting execution' in logs. Got:\n{log_text[-2000:]}"
     )
-    assert any("[flaude:exit:0]" in l for l in logs), (
+    assert any("[flaude:exit:0]" in line for line in logs), (
         f"Expected '[flaude:exit:0]' in logs. Got:\n{log_text[-2000:]}"
     )
 
@@ -233,6 +236,4 @@ async def test_machine_cleanup_on_success(
                 break
             raise
 
-    assert machine_gone, (
-        f"Expected machine {result.machine_id} to be destroyed or 404"
-    )
+    assert machine_gone, f"Expected machine {result.machine_id} to be destroyed or 404"

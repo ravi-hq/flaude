@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from typing import Any
 
 import httpx
 import pytest
@@ -12,7 +13,6 @@ from flaude.fly_client import FLY_API_BASE, FlyAPIError
 from flaude.machine_config import MachineConfig
 from flaude.runner import (
     MachineExitError,
-    RunResult,
     _cleanup_machine,
     _extract_exit_code,
     run,
@@ -25,13 +25,13 @@ TOKEN = "test-fly-token"
 MACHINE_ID = "m_abc123"
 
 
-def _machine_config(**overrides) -> MachineConfig:
+def _machine_config(**overrides: Any) -> MachineConfig:
     defaults = {
         "claude_code_oauth_token": "oauth-tok",
         "prompt": "Fix the bug",
     }
     defaults.update(overrides)
-    return MachineConfig(**defaults)
+    return MachineConfig(**defaults)  # type: ignore[arg-type]
 
 
 def _machine_response(
@@ -56,7 +56,11 @@ def _machine_stopped_response(exit_code: int = 0) -> dict:
         "region": "iad",
         "instance_id": "inst_001",
         "events": [
-            {"type": "exit", "status": "stopped", "request": {"exit_event": {"exit_code": exit_code}}},
+            {
+                "type": "exit",
+                "status": "stopped",
+                "request": {"exit_event": {"exit_code": exit_code}},
+            },
         ],
     }
 
@@ -66,22 +70,46 @@ def _machine_stopped_response(exit_code: int = 0) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def test_extract_exit_code_from_events():
-    data = {"events": [{"type": "exit", "status": "stopped", "request": {"exit_event": {"exit_code": 0}}}]}
+def test_extract_exit_code_from_events() -> None:
+    data = {
+        "events": [
+            {
+                "type": "exit",
+                "status": "stopped",
+                "request": {"exit_event": {"exit_code": 0}},
+            }
+        ]
+    }
     assert _extract_exit_code(data) == 0
 
 
-def test_extract_exit_code_nonzero():
-    data = {"events": [{"type": "exit", "status": "stopped", "request": {"exit_event": {"exit_code": 1}}}]}
+def test_extract_exit_code_nonzero() -> None:
+    data = {
+        "events": [
+            {
+                "type": "exit",
+                "status": "stopped",
+                "request": {"exit_event": {"exit_code": 1}},
+            }
+        ]
+    }
     assert _extract_exit_code(data) == 1
 
 
-def test_extract_exit_code_monitor_event():
-    data = {"events": [{"type": "exit", "status": "stopped", "request": {"monitor_event": {"exit_event": {"exit_code": 42}}}}]}
+def test_extract_exit_code_monitor_event() -> None:
+    data = {
+        "events": [
+            {
+                "type": "exit",
+                "status": "stopped",
+                "request": {"monitor_event": {"exit_event": {"exit_code": 42}}},
+            }
+        ]
+    }
     assert _extract_exit_code(data) == 42
 
 
-def test_extract_exit_code_missing():
+def test_extract_exit_code_missing() -> None:
     assert _extract_exit_code({}) is None
     assert _extract_exit_code({"events": []}) is None
 
@@ -92,7 +120,7 @@ def test_extract_exit_code_missing():
 
 
 @respx.mock
-async def test_wait_uses_wait_endpoint():
+async def test_wait_uses_wait_endpoint() -> None:
     """wait_for_machine_exit uses the /wait endpoint and then fetches state."""
     respx.get(
         f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/wait?state=stopped"
@@ -107,16 +135,14 @@ async def test_wait_uses_wait_endpoint():
 
 
 @respx.mock
-async def test_wait_falls_back_to_polling():
+async def test_wait_falls_back_to_polling() -> None:
     """When /wait fails, falls back to polling GET /machines/{id}."""
     respx.get(
         f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/wait?state=stopped"
     ).mock(return_value=httpx.Response(500, text="not available"))
 
     # First poll: still running; second poll: stopped
-    get_route = respx.get(
-        f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}"
-    ).mock(
+    get_route = respx.get(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}").mock(
         side_effect=[
             httpx.Response(200, json=_machine_response(state="started")),
             httpx.Response(200, json=_machine_stopped_response(0)),
@@ -132,7 +158,7 @@ async def test_wait_falls_back_to_polling():
 
 
 @respx.mock
-async def test_wait_handles_404_as_destroyed():
+async def test_wait_handles_404_as_destroyed() -> None:
     """If the machine is already gone (404), treat as destroyed."""
     respx.get(
         f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/wait?state=stopped"
@@ -154,24 +180,24 @@ async def test_wait_handles_404_as_destroyed():
 
 
 @respx.mock
-async def test_cleanup_machine_stops_and_destroys():
-    respx.post(
-        f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop"
-    ).mock(return_value=httpx.Response(200, json={}))
-    respx.delete(
-        f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}?force=true"
-    ).mock(return_value=httpx.Response(200, json={}))
+async def test_cleanup_machine_stops_and_destroys() -> None:
+    respx.post(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop").mock(
+        return_value=httpx.Response(200, json={})
+    )
+    respx.delete(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}?force=true").mock(
+        return_value=httpx.Response(200, json={})
+    )
 
     result = await _cleanup_machine(APP, MACHINE_ID, token=TOKEN)
     assert result is True
 
 
 @respx.mock
-async def test_cleanup_machine_continues_on_stop_failure():
+async def test_cleanup_machine_continues_on_stop_failure() -> None:
     """Cleanup continues to destroy even if stop fails."""
-    respx.post(
-        f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop"
-    ).mock(return_value=httpx.Response(500, text="fail"))
+    respx.post(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop").mock(
+        return_value=httpx.Response(500, text="fail")
+    )
     destroy_route = respx.delete(
         f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}?force=true"
     ).mock(return_value=httpx.Response(200, json={}))
@@ -182,14 +208,14 @@ async def test_cleanup_machine_continues_on_stop_failure():
 
 
 @respx.mock
-async def test_cleanup_machine_returns_false_on_destroy_failure():
+async def test_cleanup_machine_returns_false_on_destroy_failure() -> None:
     """If destroy also fails, returns False."""
-    respx.post(
-        f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop"
-    ).mock(return_value=httpx.Response(200, json={}))
-    respx.delete(
-        f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}?force=true"
-    ).mock(return_value=httpx.Response(500, text="fail"))
+    respx.post(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop").mock(
+        return_value=httpx.Response(200, json={})
+    )
+    respx.delete(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}?force=true").mock(
+        return_value=httpx.Response(500, text="fail")
+    )
 
     result = await _cleanup_machine(APP, MACHINE_ID, token=TOKEN)
     assert result is False
@@ -201,7 +227,7 @@ async def test_cleanup_machine_returns_false_on_destroy_failure():
 
 
 @respx.mock
-async def test_run_creates_waits_and_destroys_on_success():
+async def test_run_creates_waits_and_destroys_on_success() -> None:
     """Full success path: create → wait → destroy."""
     respx.post(f"{FLY_API_BASE}/apps/{APP}/machines").mock(
         return_value=httpx.Response(200, json=_machine_response())
@@ -212,9 +238,9 @@ async def test_run_creates_waits_and_destroys_on_success():
     respx.get(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}").mock(
         return_value=httpx.Response(200, json=_machine_stopped_response(0))
     )
-    stop_route = respx.post(
-        f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop"
-    ).mock(return_value=httpx.Response(200, json={}))
+    respx.post(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop").mock(
+        return_value=httpx.Response(200, json={})
+    )
     destroy_route = respx.delete(
         f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}?force=true"
     ).mock(return_value=httpx.Response(200, json={}))
@@ -229,7 +255,7 @@ async def test_run_creates_waits_and_destroys_on_success():
 
 
 @respx.mock
-async def test_run_destroys_on_nonzero_exit():
+async def test_run_destroys_on_nonzero_exit() -> None:
     """Machine is destroyed even when Claude Code exits with non-zero code."""
     respx.post(f"{FLY_API_BASE}/apps/{APP}/machines").mock(
         return_value=httpx.Response(200, json=_machine_response())
@@ -240,9 +266,9 @@ async def test_run_destroys_on_nonzero_exit():
     respx.get(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}").mock(
         return_value=httpx.Response(200, json=_machine_stopped_response(1))
     )
-    respx.post(
-        f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop"
-    ).mock(return_value=httpx.Response(200, json={}))
+    respx.post(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop").mock(
+        return_value=httpx.Response(200, json={})
+    )
     destroy_route = respx.delete(
         f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}?force=true"
     ).mock(return_value=httpx.Response(200, json={}))
@@ -254,7 +280,7 @@ async def test_run_destroys_on_nonzero_exit():
 
 
 @respx.mock
-async def test_run_destroys_on_wait_exception():
+async def test_run_destroys_on_wait_exception() -> None:
     """Machine is destroyed even when wait_for_machine_exit raises."""
     respx.post(f"{FLY_API_BASE}/apps/{APP}/machines").mock(
         return_value=httpx.Response(200, json=_machine_response())
@@ -266,9 +292,9 @@ async def test_run_destroys_on_wait_exception():
     respx.get(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}").mock(
         return_value=httpx.Response(500, text="broken")
     )
-    respx.post(
-        f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop"
-    ).mock(return_value=httpx.Response(200, json={}))
+    respx.post(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop").mock(
+        return_value=httpx.Response(200, json={})
+    )
     destroy_route = respx.delete(
         f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}?force=true"
     ).mock(return_value=httpx.Response(200, json={}))
@@ -281,7 +307,7 @@ async def test_run_destroys_on_wait_exception():
 
 
 @respx.mock
-async def test_run_no_cleanup_if_create_fails():
+async def test_run_no_cleanup_if_create_fails() -> None:
     """If machine creation fails, there's nothing to clean up."""
     respx.post(f"{FLY_API_BASE}/apps/{APP}/machines").mock(
         return_value=httpx.Response(422, text="bad config")
@@ -292,7 +318,7 @@ async def test_run_no_cleanup_if_create_fails():
 
 
 @respx.mock
-async def test_run_destroys_on_cancellation():
+async def test_run_destroys_on_cancellation() -> None:
     """Machine is destroyed even when the task is cancelled."""
     respx.post(f"{FLY_API_BASE}/apps/{APP}/machines").mock(
         return_value=httpx.Response(200, json=_machine_response())
@@ -304,7 +330,7 @@ async def test_run_destroys_on_cancellation():
 
     call_count = 0
 
-    async def slow_poll(request):
+    async def slow_poll(request: httpx.Request) -> httpx.Response:
         nonlocal call_count
         call_count += 1
         if call_count >= 2:
@@ -315,9 +341,9 @@ async def test_run_destroys_on_cancellation():
     respx.get(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}").mock(
         side_effect=slow_poll
     )
-    respx.post(
-        f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop"
-    ).mock(return_value=httpx.Response(200, json={}))
+    respx.post(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop").mock(
+        return_value=httpx.Response(200, json={})
+    )
     destroy_route = respx.delete(
         f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}?force=true"
     ).mock(return_value=httpx.Response(200, json={}))
@@ -341,7 +367,7 @@ async def test_run_destroys_on_cancellation():
 
 
 @respx.mock
-async def test_run_and_destroy_raises_on_nonzero():
+async def test_run_and_destroy_raises_on_nonzero() -> None:
     """run_and_destroy raises MachineExitError on non-zero exit."""
     respx.post(f"{FLY_API_BASE}/apps/{APP}/machines").mock(
         return_value=httpx.Response(200, json=_machine_response())
@@ -352,12 +378,12 @@ async def test_run_and_destroy_raises_on_nonzero():
     respx.get(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}").mock(
         return_value=httpx.Response(200, json=_machine_stopped_response(1))
     )
-    respx.post(
-        f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop"
-    ).mock(return_value=httpx.Response(200, json={}))
-    respx.delete(
-        f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}?force=true"
-    ).mock(return_value=httpx.Response(200, json={}))
+    respx.post(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop").mock(
+        return_value=httpx.Response(200, json={})
+    )
+    respx.delete(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}?force=true").mock(
+        return_value=httpx.Response(200, json={})
+    )
 
     with pytest.raises(MachineExitError) as exc_info:
         await run_and_destroy(APP, _machine_config(), token=TOKEN)
@@ -367,7 +393,7 @@ async def test_run_and_destroy_raises_on_nonzero():
 
 
 @respx.mock
-async def test_run_and_destroy_no_raise_when_disabled():
+async def test_run_and_destroy_no_raise_when_disabled() -> None:
     """run_and_destroy returns result when raise_on_failure=False."""
     respx.post(f"{FLY_API_BASE}/apps/{APP}/machines").mock(
         return_value=httpx.Response(200, json=_machine_response())
@@ -378,12 +404,12 @@ async def test_run_and_destroy_no_raise_when_disabled():
     respx.get(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}").mock(
         return_value=httpx.Response(200, json=_machine_stopped_response(1))
     )
-    respx.post(
-        f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop"
-    ).mock(return_value=httpx.Response(200, json={}))
-    respx.delete(
-        f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}?force=true"
-    ).mock(return_value=httpx.Response(200, json={}))
+    respx.post(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop").mock(
+        return_value=httpx.Response(200, json={})
+    )
+    respx.delete(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}?force=true").mock(
+        return_value=httpx.Response(200, json={})
+    )
 
     result = await run_and_destroy(
         APP, _machine_config(), token=TOKEN, raise_on_failure=False
@@ -398,7 +424,7 @@ async def test_run_and_destroy_no_raise_when_disabled():
 
 
 @respx.mock
-async def test_run_destroys_on_failed_machine_state():
+async def test_run_destroys_on_failed_machine_state() -> None:
     """Machine is destroyed when it exits in 'failed' state (not just non-zero exit)."""
     failed_response = {
         "id": MACHINE_ID,
@@ -407,7 +433,11 @@ async def test_run_destroys_on_failed_machine_state():
         "region": "iad",
         "instance_id": "inst_001",
         "events": [
-            {"type": "exit", "status": "stopped", "request": {"exit_event": {"exit_code": 137}}},
+            {
+                "type": "exit",
+                "status": "stopped",
+                "request": {"exit_event": {"exit_code": 137}},
+            },
         ],
     }
 
@@ -420,9 +450,9 @@ async def test_run_destroys_on_failed_machine_state():
     respx.get(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}").mock(
         return_value=httpx.Response(200, json=failed_response)
     )
-    respx.post(
-        f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop"
-    ).mock(return_value=httpx.Response(200, json={}))
+    respx.post(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop").mock(
+        return_value=httpx.Response(200, json={})
+    )
     destroy_route = respx.delete(
         f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}?force=true"
     ).mock(return_value=httpx.Response(200, json={}))
@@ -435,14 +465,14 @@ async def test_run_destroys_on_failed_machine_state():
 
 
 @respx.mock
-async def test_cleanup_handles_both_stop_and_destroy_api_errors():
+async def test_cleanup_handles_both_stop_and_destroy_api_errors() -> None:
     """When both stop and destroy return API errors, cleanup handles gracefully."""
-    respx.post(
-        f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop"
-    ).mock(return_value=httpx.Response(500, text="stop server error"))
-    respx.delete(
-        f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}?force=true"
-    ).mock(return_value=httpx.Response(500, text="destroy server error"))
+    respx.post(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop").mock(
+        return_value=httpx.Response(500, text="stop server error")
+    )
+    respx.delete(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}?force=true").mock(
+        return_value=httpx.Response(500, text="destroy server error")
+    )
 
     # _cleanup_machine should NOT raise — it returns False
     result = await _cleanup_machine(APP, MACHINE_ID, token=TOKEN)
@@ -450,11 +480,11 @@ async def test_cleanup_handles_both_stop_and_destroy_api_errors():
 
 
 @respx.mock
-async def test_cleanup_handles_network_error_on_stop():
+async def test_cleanup_handles_network_error_on_stop() -> None:
     """Network-level errors during stop are caught and cleanup continues to destroy."""
-    respx.post(
-        f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop"
-    ).mock(side_effect=httpx.ConnectError("connection refused"))
+    respx.post(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop").mock(
+        side_effect=httpx.ConnectError("connection refused")
+    )
     destroy_route = respx.delete(
         f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}?force=true"
     ).mock(return_value=httpx.Response(200, json={}))
@@ -465,51 +495,53 @@ async def test_cleanup_handles_network_error_on_stop():
 
 
 @respx.mock
-async def test_cleanup_handles_network_error_on_destroy():
+async def test_cleanup_handles_network_error_on_destroy() -> None:
     """Network-level errors during destroy result in False (potential orphan)."""
-    respx.post(
-        f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop"
-    ).mock(return_value=httpx.Response(200, json={}))
-    respx.delete(
-        f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}?force=true"
-    ).mock(side_effect=httpx.ConnectError("connection refused"))
+    respx.post(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop").mock(
+        return_value=httpx.Response(200, json={})
+    )
+    respx.delete(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}?force=true").mock(
+        side_effect=httpx.ConnectError("connection refused")
+    )
 
     result = await _cleanup_machine(APP, MACHINE_ID, token=TOKEN)
     assert result is False
 
 
 @respx.mock
-async def test_cleanup_handles_timeout_on_destroy():
+async def test_cleanup_handles_timeout_on_destroy() -> None:
     """Timeout during destroy is handled gracefully."""
-    respx.post(
-        f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop"
-    ).mock(return_value=httpx.Response(200, json={}))
-    respx.delete(
-        f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}?force=true"
-    ).mock(side_effect=httpx.ReadTimeout("timed out"))
+    respx.post(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop").mock(
+        return_value=httpx.Response(200, json={})
+    )
+    respx.delete(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}?force=true").mock(
+        side_effect=httpx.ReadTimeout("timed out")
+    )
 
     result = await _cleanup_machine(APP, MACHINE_ID, token=TOKEN)
     assert result is False
 
 
 @respx.mock
-async def test_run_destroys_after_arbitrary_exception(monkeypatch):
+async def test_run_destroys_after_arbitrary_exception(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Machine is destroyed even when an unexpected (non-API) exception occurs."""
     respx.post(f"{FLY_API_BASE}/apps/{APP}/machines").mock(
         return_value=httpx.Response(200, json=_machine_response())
     )
 
     # Patch wait_for_machine_exit to raise an arbitrary exception
-    async def _boom(*args, **kwargs):
+    async def _boom(*args: Any, **kwargs: Any) -> None:
         raise RuntimeError("unexpected internal error")
 
     import flaude.runner as runner_mod
 
     monkeypatch.setattr(runner_mod, "wait_for_machine_exit", _boom)
 
-    respx.post(
-        f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop"
-    ).mock(return_value=httpx.Response(200, json={}))
+    respx.post(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop").mock(
+        return_value=httpx.Response(200, json={})
+    )
     destroy_route = respx.delete(
         f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}?force=true"
     ).mock(return_value=httpx.Response(200, json={}))
@@ -522,8 +554,9 @@ async def test_run_destroys_after_arbitrary_exception(monkeypatch):
 
 
 @respx.mock
-async def test_run_cleanup_failure_does_not_mask_original_exception():
-    """If cleanup fails, the original exception still propagates (not the cleanup error)."""
+async def test_run_cleanup_failure_does_not_mask_original_exception() -> None:
+    """If cleanup fails, the original exception still propagates (not the cleanup
+    error)."""
     respx.post(f"{FLY_API_BASE}/apps/{APP}/machines").mock(
         return_value=httpx.Response(200, json=_machine_response())
     )
@@ -535,13 +568,13 @@ async def test_run_cleanup_failure_does_not_mask_original_exception():
         return_value=httpx.Response(500, text="broken")
     )
     # Stop fails
-    respx.post(
-        f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop"
-    ).mock(return_value=httpx.Response(500, text="stop broken"))
+    respx.post(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/stop").mock(
+        return_value=httpx.Response(500, text="stop broken")
+    )
     # Destroy also fails
-    respx.delete(
-        f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}?force=true"
-    ).mock(return_value=httpx.Response(500, text="destroy broken"))
+    respx.delete(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}?force=true").mock(
+        return_value=httpx.Response(500, text="destroy broken")
+    )
 
     # The original FlyAPIError from polling should propagate, not cleanup errors
     with pytest.raises(FlyAPIError) as exc_info:
@@ -551,7 +584,7 @@ async def test_run_cleanup_failure_does_not_mask_original_exception():
 
 
 @respx.mock
-async def test_run_and_destroy_still_cleans_up_on_exit_error():
+async def test_run_and_destroy_still_cleans_up_on_exit_error() -> None:
     """run_and_destroy destroys the machine even when raising MachineExitError."""
     respx.post(f"{FLY_API_BASE}/apps/{APP}/machines").mock(
         return_value=httpx.Response(200, json=_machine_response())

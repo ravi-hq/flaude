@@ -11,7 +11,6 @@ import asyncio
 from collections import defaultdict
 
 import httpx
-import pytest
 import respx
 
 from flaude.executor import (
@@ -20,7 +19,7 @@ from flaude.executor import (
 )
 from flaude.fly_client import FLY_API_BASE
 from flaude.machine_config import MachineConfig
-from flaude.runner import RunResult, run
+from flaude.runner import run
 
 APP = "flaude-integration-test"
 TOKEN = "test-fly-token"
@@ -51,7 +50,11 @@ def _stopped_response(machine_id: str, exit_code: int = 0) -> dict:
         "region": "iad",
         "instance_id": f"inst_{machine_id}",
         "events": [
-            {"type": "exit", "status": "stopped", "request": {"exit_event": {"exit_code": exit_code}}},
+            {
+                "type": "exit",
+                "status": "stopped",
+                "request": {"exit_event": {"exit_code": exit_code}},
+            },
         ],
     }
 
@@ -62,9 +65,10 @@ def _stopped_response(machine_id: str, exit_code: int = 0) -> dict:
 
 
 class LifecycleTracker:
-    """Tracks create/wait/stop/destroy calls per machine to verify isolation and cleanup."""
+    """Tracks create/wait/stop/destroy calls per machine to verify isolation and
+    cleanup."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.created_ids: list[str] = []
         self.api_calls: dict[str, list[str]] = defaultdict(list)
         self._create_counter = 0
@@ -73,12 +77,14 @@ class LifecycleTracker:
         self._active_machines: set[str] = set()
         self._max_concurrent: int = 0
 
-    def setup(self, machine_ids: list[str], exit_codes: dict[str, int] | None = None):
+    def setup(
+        self, machine_ids: list[str], exit_codes: dict[str, int] | None = None
+    ) -> None:
         """Register machine IDs and set up respx mocks with tracking callbacks."""
         self._machine_ids = machine_ids
         _exit_codes = exit_codes or {}
 
-        async def create_handler(request):
+        async def create_handler(request: httpx.Request) -> httpx.Response:
             mid = self._machine_ids[self._create_counter]
             self._create_counter += 1
             self.created_ids.append(mid)
@@ -95,7 +101,7 @@ class LifecycleTracker:
             ec = _exit_codes.get(mid, 0)
 
             # Wait endpoint
-            async def make_wait_handler(m=mid):
+            async def make_wait_handler(m: str = mid) -> httpx.Response:
                 self.api_calls[m].append("wait")
                 # Small delay to simulate real wait and allow concurrency
                 await asyncio.sleep(0.01)
@@ -107,29 +113,31 @@ class LifecycleTracker:
 
             # GET machine status
             respx.get(f"{FLY_API_BASE}/apps/{APP}/machines/{mid}").mock(
-                return_value=httpx.Response(
-                    200, json=_stopped_response(mid, ec)
-                )
+                return_value=httpx.Response(200, json=_stopped_response(mid, ec))
             )
 
             # Stop
-            async def stop_handler(request, m=mid):
+            async def stop_handler(  # noqa: E501
+                request: httpx.Request, m: str = mid
+            ) -> httpx.Response:
                 self.api_calls[m].append("stop")
                 return httpx.Response(200, json={})
 
-            respx.post(
-                f"{FLY_API_BASE}/apps/{APP}/machines/{mid}/stop"
-            ).mock(side_effect=stop_handler)
+            respx.post(f"{FLY_API_BASE}/apps/{APP}/machines/{mid}/stop").mock(
+                side_effect=stop_handler
+            )
 
             # Destroy
-            async def destroy_handler(request, m=mid):
+            async def destroy_handler(
+                request: httpx.Request, m: str = mid
+            ) -> httpx.Response:
                 self.api_calls[m].append("destroy")
                 self._active_machines.discard(m)
                 return httpx.Response(200, json={})
 
-            respx.delete(
-                f"{FLY_API_BASE}/apps/{APP}/machines/{mid}?force=true"
-            ).mock(side_effect=destroy_handler)
+            respx.delete(f"{FLY_API_BASE}/apps/{APP}/machines/{mid}?force=true").mock(
+                side_effect=destroy_handler
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -138,7 +146,7 @@ class LifecycleTracker:
 
 
 @respx.mock
-async def test_each_prompt_gets_unique_machine_id():
+async def test_each_prompt_gets_unique_machine_id() -> None:
     """Every prompt in a concurrent batch is dispatched to a separate machine
     with a unique machine ID — no two prompts share a machine."""
     tracker = LifecycleTracker()
@@ -174,7 +182,7 @@ async def test_each_prompt_gets_unique_machine_id():
 
 
 @respx.mock
-async def test_results_stream_independently():
+async def test_results_stream_independently() -> None:
     """Each machine's execution produces independent results — one machine
     failing does not affect others, and results map correctly to their tags."""
     tracker = LifecycleTracker()
@@ -199,16 +207,19 @@ async def test_results_stream_independently():
     r0 = batch.results[0]
     assert r0.tag == "good_1"
     assert r0.success is True
+    assert r0.run_result is not None
     assert r0.run_result.exit_code == 0
 
     r1 = batch.results[1]
     assert r1.tag == "bad_1"
     assert r1.success is False
+    assert r1.run_result is not None
     assert r1.run_result.exit_code == 1
 
     r2 = batch.results[2]
     assert r2.tag == "good_2"
     assert r2.success is True
+    assert r2.run_result is not None
     assert r2.run_result.exit_code == 0
 
     # All 3 machines have distinct IDs
@@ -222,7 +233,7 @@ async def test_results_stream_independently():
 
 
 @respx.mock
-async def test_all_machines_cleaned_up_after_completion():
+async def test_all_machines_cleaned_up_after_completion() -> None:
     """Every machine created in a batch is destroyed after completion,
     regardless of individual success or failure."""
     tracker = LifecycleTracker()
@@ -247,9 +258,7 @@ async def test_all_machines_cleaned_up_after_completion():
 
     # Every machine must have had destroy called
     for mid in machine_ids:
-        assert "destroy" in tracker.api_calls[mid], (
-            f"Machine {mid} was not destroyed"
-        )
+        assert "destroy" in tracker.api_calls[mid], f"Machine {mid} was not destroyed"
         assert "stop" in tracker.api_calls[mid], (
             f"Machine {mid} was not stopped before destroy"
         )
@@ -261,7 +270,7 @@ async def test_all_machines_cleaned_up_after_completion():
 
 
 @respx.mock
-async def test_cleanup_on_mixed_creation_failure():
+async def test_cleanup_on_mixed_creation_failure() -> None:
     """Machines that fail to create don't interfere with cleanup of
     successfully created machines."""
     # First machine succeeds, second fails at creation, third succeeds
@@ -271,7 +280,7 @@ async def test_cleanup_on_mixed_creation_failure():
     create_call_count = 0
     destroyed_machines: list[str] = []
 
-    async def create_handler(request):
+    async def create_handler(request: httpx.Request) -> httpx.Response:
         nonlocal create_call_count
         create_call_count += 1
         if create_call_count == 2:
@@ -280,14 +289,12 @@ async def test_cleanup_on_mixed_creation_failure():
         mid = mid_1 if create_call_count == 1 else mid_3
         return httpx.Response(200, json=_machine_response(mid))
 
-    respx.post(f"{FLY_API_BASE}/apps/{APP}/machines").mock(
-        side_effect=create_handler
-    )
+    respx.post(f"{FLY_API_BASE}/apps/{APP}/machines").mock(side_effect=create_handler)
 
     for mid in [mid_1, mid_3]:
-        respx.get(
-            f"{FLY_API_BASE}/apps/{APP}/machines/{mid}/wait?state=stopped"
-        ).mock(return_value=httpx.Response(200, json={}))
+        respx.get(f"{FLY_API_BASE}/apps/{APP}/machines/{mid}/wait?state=stopped").mock(
+            return_value=httpx.Response(200, json={})
+        )
         respx.get(f"{FLY_API_BASE}/apps/{APP}/machines/{mid}").mock(
             return_value=httpx.Response(200, json=_stopped_response(mid, 0))
         )
@@ -295,13 +302,15 @@ async def test_cleanup_on_mixed_creation_failure():
             return_value=httpx.Response(200, json={})
         )
 
-        async def destroy_handler(request, m=mid):
+        async def destroy_handler(
+            request: httpx.Request, m: str = mid
+        ) -> httpx.Response:
             destroyed_machines.append(m)
             return httpx.Response(200, json={})
 
-        respx.delete(
-            f"{FLY_API_BASE}/apps/{APP}/machines/{mid}?force=true"
-        ).mock(side_effect=destroy_handler)
+        respx.delete(f"{FLY_API_BASE}/apps/{APP}/machines/{mid}?force=true").mock(
+            side_effect=destroy_handler
+        )
 
     executor = ConcurrentExecutor(APP, token=TOKEN)
     requests = [
@@ -332,7 +341,7 @@ async def test_cleanup_on_mixed_creation_failure():
 
 
 @respx.mock
-async def test_concurrent_execution_runs_in_parallel():
+async def test_concurrent_execution_runs_in_parallel() -> None:
     """Multiple machines execute truly concurrently — verify by checking
     that machines overlap in their active lifetimes."""
     machine_ids = ["m_par_1", "m_par_2", "m_par_3"]
@@ -341,7 +350,7 @@ async def test_concurrent_execution_runs_in_parallel():
 
     create_counter = 0
 
-    async def create_handler(request):
+    async def create_handler(request: httpx.Request) -> httpx.Response:
         nonlocal create_counter, max_concurrent
         mid = machine_ids[create_counter]
         create_counter += 1
@@ -349,19 +358,18 @@ async def test_concurrent_execution_runs_in_parallel():
         max_concurrent = max(max_concurrent, len(active_set))
         return httpx.Response(200, json=_machine_response(mid))
 
-    respx.post(f"{FLY_API_BASE}/apps/{APP}/machines").mock(
-        side_effect=create_handler
-    )
+    respx.post(f"{FLY_API_BASE}/apps/{APP}/machines").mock(side_effect=create_handler)
 
     for mid in machine_ids:
-        async def wait_handler(request, m=mid):
+
+        async def wait_handler(request: httpx.Request, m: str = mid) -> httpx.Response:
             # Small delay to keep machine "active" long enough for overlap
             await asyncio.sleep(0.05)
             return httpx.Response(200, json={})
 
-        respx.get(
-            f"{FLY_API_BASE}/apps/{APP}/machines/{mid}/wait?state=stopped"
-        ).mock(side_effect=wait_handler)
+        respx.get(f"{FLY_API_BASE}/apps/{APP}/machines/{mid}/wait?state=stopped").mock(
+            side_effect=wait_handler
+        )
 
         respx.get(f"{FLY_API_BASE}/apps/{APP}/machines/{mid}").mock(
             return_value=httpx.Response(200, json=_stopped_response(mid, 0))
@@ -370,13 +378,15 @@ async def test_concurrent_execution_runs_in_parallel():
             return_value=httpx.Response(200, json={})
         )
 
-        async def destroy_handler(request, m=mid):
+        async def destroy_handler(
+            request: httpx.Request, m: str = mid
+        ) -> httpx.Response:
             active_set.discard(m)
             return httpx.Response(200, json={})
 
-        respx.delete(
-            f"{FLY_API_BASE}/apps/{APP}/machines/{mid}?force=true"
-        ).mock(side_effect=destroy_handler)
+        respx.delete(f"{FLY_API_BASE}/apps/{APP}/machines/{mid}?force=true").mock(
+            side_effect=destroy_handler
+        )
 
     executor = ConcurrentExecutor(APP, token=TOKEN)
     requests = [
@@ -402,27 +412,25 @@ async def test_concurrent_execution_runs_in_parallel():
 
 
 @respx.mock
-async def test_direct_run_concurrent_with_gather():
+async def test_direct_run_concurrent_with_gather() -> None:
     """Using asyncio.gather with multiple runner.run() calls — each machine
     gets its own ID and all are cleaned up independently."""
     machine_ids = ["m_direct_1", "m_direct_2"]
     destroyed: set[str] = set()
     create_counter = 0
 
-    async def create_handler(request):
+    async def create_handler(request: httpx.Request) -> httpx.Response:
         nonlocal create_counter
         mid = machine_ids[create_counter]
         create_counter += 1
         return httpx.Response(200, json=_machine_response(mid))
 
-    respx.post(f"{FLY_API_BASE}/apps/{APP}/machines").mock(
-        side_effect=create_handler
-    )
+    respx.post(f"{FLY_API_BASE}/apps/{APP}/machines").mock(side_effect=create_handler)
 
     for mid in machine_ids:
-        respx.get(
-            f"{FLY_API_BASE}/apps/{APP}/machines/{mid}/wait?state=stopped"
-        ).mock(return_value=httpx.Response(200, json={}))
+        respx.get(f"{FLY_API_BASE}/apps/{APP}/machines/{mid}/wait?state=stopped").mock(
+            return_value=httpx.Response(200, json={})
+        )
         respx.get(f"{FLY_API_BASE}/apps/{APP}/machines/{mid}").mock(
             return_value=httpx.Response(200, json=_stopped_response(mid, 0))
         )
@@ -430,13 +438,15 @@ async def test_direct_run_concurrent_with_gather():
             return_value=httpx.Response(200, json={})
         )
 
-        async def destroy_handler(request, m=mid):
+        async def destroy_handler(
+            request: httpx.Request, m: str = mid
+        ) -> httpx.Response:
             destroyed.add(m)
             return httpx.Response(200, json={})
 
-        respx.delete(
-            f"{FLY_API_BASE}/apps/{APP}/machines/{mid}?force=true"
-        ).mock(side_effect=destroy_handler)
+        respx.delete(f"{FLY_API_BASE}/apps/{APP}/machines/{mid}?force=true").mock(
+            side_effect=destroy_handler
+        )
 
     # Use runner.run() directly with asyncio.gather
     results = await asyncio.gather(
@@ -459,27 +469,25 @@ async def test_direct_run_concurrent_with_gather():
 
 
 @respx.mock
-async def test_large_batch_all_cleaned_up():
+async def test_large_batch_all_cleaned_up() -> None:
     """A larger batch (10 machines) all execute and are destroyed."""
     n = 10
     machine_ids = [f"m_large_{i}" for i in range(n)]
     destroyed: set[str] = set()
     create_counter = 0
 
-    async def create_handler(request):
+    async def create_handler(request: httpx.Request) -> httpx.Response:
         nonlocal create_counter
         mid = machine_ids[create_counter]
         create_counter += 1
         return httpx.Response(200, json=_machine_response(mid))
 
-    respx.post(f"{FLY_API_BASE}/apps/{APP}/machines").mock(
-        side_effect=create_handler
-    )
+    respx.post(f"{FLY_API_BASE}/apps/{APP}/machines").mock(side_effect=create_handler)
 
     for mid in machine_ids:
-        respx.get(
-            f"{FLY_API_BASE}/apps/{APP}/machines/{mid}/wait?state=stopped"
-        ).mock(return_value=httpx.Response(200, json={}))
+        respx.get(f"{FLY_API_BASE}/apps/{APP}/machines/{mid}/wait?state=stopped").mock(
+            return_value=httpx.Response(200, json={})
+        )
         respx.get(f"{FLY_API_BASE}/apps/{APP}/machines/{mid}").mock(
             return_value=httpx.Response(200, json=_stopped_response(mid, 0))
         )
@@ -487,13 +495,15 @@ async def test_large_batch_all_cleaned_up():
             return_value=httpx.Response(200, json={})
         )
 
-        async def destroy_handler(request, m=mid):
+        async def destroy_handler(
+            request: httpx.Request, m: str = mid
+        ) -> httpx.Response:
             destroyed.add(m)
             return httpx.Response(200, json={})
 
-        respx.delete(
-            f"{FLY_API_BASE}/apps/{APP}/machines/{mid}?force=true"
-        ).mock(side_effect=destroy_handler)
+        respx.delete(f"{FLY_API_BASE}/apps/{APP}/machines/{mid}?force=true").mock(
+            side_effect=destroy_handler
+        )
 
     executor = ConcurrentExecutor(APP, token=TOKEN)
     requests = [
@@ -519,7 +529,7 @@ async def test_large_batch_all_cleaned_up():
 
 
 @respx.mock
-async def test_varied_exit_codes_stream_independently():
+async def test_varied_exit_codes_stream_independently() -> None:
     """Each machine exits with a different exit code, and results correctly
     map each exit code to the right tag/machine — proving independent streaming."""
     machine_ids = ["m_ec_0", "m_ec_1", "m_ec_2", "m_ec_42"]
@@ -527,30 +537,28 @@ async def test_varied_exit_codes_stream_independently():
 
     create_counter = 0
 
-    async def create_handler(request):
+    async def create_handler(request: httpx.Request) -> httpx.Response:
         nonlocal create_counter
         mid = machine_ids[create_counter]
         create_counter += 1
         return httpx.Response(200, json=_machine_response(mid))
 
-    respx.post(f"{FLY_API_BASE}/apps/{APP}/machines").mock(
-        side_effect=create_handler
-    )
+    respx.post(f"{FLY_API_BASE}/apps/{APP}/machines").mock(side_effect=create_handler)
 
     for mid in machine_ids:
         ec = exit_codes[mid]
-        respx.get(
-            f"{FLY_API_BASE}/apps/{APP}/machines/{mid}/wait?state=stopped"
-        ).mock(return_value=httpx.Response(200, json={}))
+        respx.get(f"{FLY_API_BASE}/apps/{APP}/machines/{mid}/wait?state=stopped").mock(
+            return_value=httpx.Response(200, json={})
+        )
         respx.get(f"{FLY_API_BASE}/apps/{APP}/machines/{mid}").mock(
             return_value=httpx.Response(200, json=_stopped_response(mid, ec))
         )
         respx.post(f"{FLY_API_BASE}/apps/{APP}/machines/{mid}/stop").mock(
             return_value=httpx.Response(200, json={})
         )
-        respx.delete(
-            f"{FLY_API_BASE}/apps/{APP}/machines/{mid}?force=true"
-        ).mock(return_value=httpx.Response(200, json={}))
+        respx.delete(f"{FLY_API_BASE}/apps/{APP}/machines/{mid}?force=true").mock(
+            return_value=httpx.Response(200, json={})
+        )
 
     executor = ConcurrentExecutor(APP, token=TOKEN)
     requests = [
@@ -578,7 +586,7 @@ async def test_varied_exit_codes_stream_independently():
 
 
 @respx.mock
-async def test_exception_in_one_does_not_affect_others():
+async def test_exception_in_one_does_not_affect_others() -> None:
     """When one machine's wait raises an API error, other machines still
     complete successfully and all are cleaned up."""
     # Machine 1 succeeds normally, Machine 2 has wait endpoint fail then
@@ -587,21 +595,19 @@ async def test_exception_in_one_does_not_affect_others():
     destroyed: set[str] = set()
     create_counter = 0
 
-    async def create_handler(request):
+    async def create_handler(request: httpx.Request) -> httpx.Response:
         nonlocal create_counter
         mid = machine_ids[create_counter]
         create_counter += 1
         return httpx.Response(200, json=_machine_response(mid))
 
-    respx.post(f"{FLY_API_BASE}/apps/{APP}/machines").mock(
-        side_effect=create_handler
-    )
+    respx.post(f"{FLY_API_BASE}/apps/{APP}/machines").mock(side_effect=create_handler)
 
     # OK machines have normal lifecycle
     for mid in ["m_ok_1", "m_ok_2"]:
-        respx.get(
-            f"{FLY_API_BASE}/apps/{APP}/machines/{mid}/wait?state=stopped"
-        ).mock(return_value=httpx.Response(200, json={}))
+        respx.get(f"{FLY_API_BASE}/apps/{APP}/machines/{mid}/wait?state=stopped").mock(
+            return_value=httpx.Response(200, json={})
+        )
         respx.get(f"{FLY_API_BASE}/apps/{APP}/machines/{mid}").mock(
             return_value=httpx.Response(200, json=_stopped_response(mid, 0))
         )
@@ -609,18 +615,18 @@ async def test_exception_in_one_does_not_affect_others():
             return_value=httpx.Response(200, json={})
         )
 
-        async def ok_destroy(request, m=mid):
+        async def ok_destroy(request: httpx.Request, m: str = mid) -> httpx.Response:
             destroyed.add(m)
             return httpx.Response(200, json={})
 
-        respx.delete(
-            f"{FLY_API_BASE}/apps/{APP}/machines/{mid}?force=true"
-        ).mock(side_effect=ok_destroy)
+        respx.delete(f"{FLY_API_BASE}/apps/{APP}/machines/{mid}?force=true").mock(
+            side_effect=ok_destroy
+        )
 
     # Error machine: wait fails, polling also fails
-    respx.get(
-        f"{FLY_API_BASE}/apps/{APP}/machines/m_error/wait?state=stopped"
-    ).mock(return_value=httpx.Response(500, text="broken"))
+    respx.get(f"{FLY_API_BASE}/apps/{APP}/machines/m_error/wait?state=stopped").mock(
+        return_value=httpx.Response(500, text="broken")
+    )
     respx.get(f"{FLY_API_BASE}/apps/{APP}/machines/m_error").mock(
         return_value=httpx.Response(500, text="broken")
     )
@@ -628,13 +634,13 @@ async def test_exception_in_one_does_not_affect_others():
         return_value=httpx.Response(200, json={})
     )
 
-    async def error_destroy(request):
+    async def error_destroy(request: httpx.Request) -> httpx.Response:
         destroyed.add("m_error")
         return httpx.Response(200, json={})
 
-    respx.delete(
-        f"{FLY_API_BASE}/apps/{APP}/machines/m_error?force=true"
-    ).mock(side_effect=error_destroy)
+    respx.delete(f"{FLY_API_BASE}/apps/{APP}/machines/m_error?force=true").mock(
+        side_effect=error_destroy
+    )
 
     executor = ConcurrentExecutor(APP, token=TOKEN)
     requests = [

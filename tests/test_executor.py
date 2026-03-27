@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 
 import httpx
-import pytest
 import respx
 
 from flaude.executor import (
@@ -46,12 +45,16 @@ def _stopped_response(machine_id: str, exit_code: int = 0) -> dict:
         "region": "iad",
         "instance_id": f"inst_{machine_id}",
         "events": [
-            {"type": "exit", "status": "stopped", "request": {"exit_event": {"exit_code": exit_code}}},
+            {
+                "type": "exit",
+                "status": "stopped",
+                "request": {"exit_event": {"exit_code": exit_code}},
+            },
         ],
     }
 
 
-def _mock_full_lifecycle(machine_id: str, exit_code: int = 0):
+def _mock_full_lifecycle(machine_id: str, exit_code: int = 0) -> None:
     """Set up respx mocks for a complete machine lifecycle (create → wait → cleanup)."""
     respx.post(f"{FLY_API_BASE}/apps/{APP}/machines").mock(
         return_value=httpx.Response(200, json=_machine_response(machine_id))
@@ -60,16 +63,14 @@ def _mock_full_lifecycle(machine_id: str, exit_code: int = 0):
         f"{FLY_API_BASE}/apps/{APP}/machines/{machine_id}/wait?state=stopped"
     ).mock(return_value=httpx.Response(200, json={}))
     respx.get(f"{FLY_API_BASE}/apps/{APP}/machines/{machine_id}").mock(
-        return_value=httpx.Response(
-            200, json=_stopped_response(machine_id, exit_code)
-        )
+        return_value=httpx.Response(200, json=_stopped_response(machine_id, exit_code))
     )
     respx.post(f"{FLY_API_BASE}/apps/{APP}/machines/{machine_id}/stop").mock(
         return_value=httpx.Response(200, json={})
     )
-    respx.delete(
-        f"{FLY_API_BASE}/apps/{APP}/machines/{machine_id}?force=true"
-    ).mock(return_value=httpx.Response(200, json={}))
+    respx.delete(f"{FLY_API_BASE}/apps/{APP}/machines/{machine_id}?force=true").mock(
+        return_value=httpx.Response(200, json={})
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -77,55 +78,65 @@ def _mock_full_lifecycle(machine_id: str, exit_code: int = 0):
 # ---------------------------------------------------------------------------
 
 
-def test_execution_result_success():
+def test_execution_result_success() -> None:
     from flaude.runner import RunResult
 
     r = ExecutionResult(
         tag="t1",
-        run_result=RunResult(machine_id="m1", exit_code=0, state="stopped", destroyed=True),
+        run_result=RunResult(
+            machine_id="m1", exit_code=0, state="stopped", destroyed=True
+        ),
     )
     assert r.success is True
 
 
-def test_execution_result_failure_nonzero():
+def test_execution_result_failure_nonzero() -> None:
     from flaude.runner import RunResult
 
     r = ExecutionResult(
         tag="t1",
-        run_result=RunResult(machine_id="m1", exit_code=1, state="stopped", destroyed=True),
+        run_result=RunResult(
+            machine_id="m1", exit_code=1, state="stopped", destroyed=True
+        ),
     )
     assert r.success is False
 
 
-def test_execution_result_failure_error():
+def test_execution_result_failure_error() -> None:
     r = ExecutionResult(tag="t1", error=RuntimeError("boom"))
     assert r.success is False
 
 
-def test_batch_result_all_succeeded():
+def test_batch_result_all_succeeded() -> None:
     from flaude.runner import RunResult
 
     results = [
         ExecutionResult(
             tag="t1",
-            run_result=RunResult(machine_id="m1", exit_code=0, state="stopped", destroyed=True),
+            run_result=RunResult(
+                machine_id="m1", exit_code=0, state="stopped", destroyed=True
+            ),
         ),
         ExecutionResult(
             tag="t2",
-            run_result=RunResult(machine_id="m2", exit_code=0, state="stopped", destroyed=True),
+            run_result=RunResult(
+                machine_id="m2", exit_code=0, state="stopped", destroyed=True
+            ),
         ),
     ]
     batch = BatchResult(results=results, total=2, succeeded=2, failed=0)
     assert batch.all_succeeded is True
 
 
-def test_batch_result_not_all_succeeded():
+def test_batch_result_not_all_succeeded() -> None:
     from flaude.runner import RunResult
 
     results = [
         ExecutionResult(
             tag="t1",
-            run_result=RunResult(machine_id="m1", exit_code=0, state="stopped", destroyed=True),
+            run_result=RunResult(
+                machine_id="m1", exit_code=0, state="stopped", destroyed=True
+            ),
         ),
         ExecutionResult(tag="t2", error=RuntimeError("boom")),
     ]
@@ -138,7 +149,7 @@ def test_batch_result_not_all_succeeded():
 # ---------------------------------------------------------------------------
 
 
-async def test_run_batch_empty():
+async def test_run_batch_empty() -> None:
     executor = ConcurrentExecutor(APP, token=TOKEN)
     batch = await executor.run_batch([])
     assert batch.total == 0
@@ -153,7 +164,7 @@ async def test_run_batch_empty():
 
 
 @respx.mock
-async def test_run_one_success():
+async def test_run_one_success() -> None:
     """run_one dispatches a single prompt and returns its result."""
     _mock_full_lifecycle("m_single")
 
@@ -173,7 +184,7 @@ async def test_run_one_success():
 
 
 @respx.mock
-async def test_run_batch_multiple_success():
+async def test_run_batch_multiple_success() -> None:
     """Multiple prompts run concurrently, each on its own machine."""
     # We need to handle multiple create calls returning different machine IDs.
     # respx doesn't natively support different responses for repeated calls
@@ -183,23 +194,21 @@ async def test_run_batch_multiple_success():
     create_responses = [
         httpx.Response(200, json=_machine_response(mid)) for mid in machine_ids
     ]
-    respx.post(f"{FLY_API_BASE}/apps/{APP}/machines").mock(
-        side_effect=create_responses
-    )
+    respx.post(f"{FLY_API_BASE}/apps/{APP}/machines").mock(side_effect=create_responses)
 
     for mid in machine_ids:
-        respx.get(
-            f"{FLY_API_BASE}/apps/{APP}/machines/{mid}/wait?state=stopped"
-        ).mock(return_value=httpx.Response(200, json={}))
+        respx.get(f"{FLY_API_BASE}/apps/{APP}/machines/{mid}/wait?state=stopped").mock(
+            return_value=httpx.Response(200, json={})
+        )
         respx.get(f"{FLY_API_BASE}/apps/{APP}/machines/{mid}").mock(
             return_value=httpx.Response(200, json=_stopped_response(mid, 0))
         )
         respx.post(f"{FLY_API_BASE}/apps/{APP}/machines/{mid}/stop").mock(
             return_value=httpx.Response(200, json={})
         )
-        respx.delete(
-            f"{FLY_API_BASE}/apps/{APP}/machines/{mid}?force=true"
-        ).mock(return_value=httpx.Response(200, json={}))
+        respx.delete(f"{FLY_API_BASE}/apps/{APP}/machines/{mid}?force=true").mock(
+            return_value=httpx.Response(200, json={})
+        )
 
     executor = ConcurrentExecutor(APP, token=TOKEN)
     requests = [
@@ -226,30 +235,28 @@ async def test_run_batch_multiple_success():
 
 
 @respx.mock
-async def test_run_batch_partial_failure():
+async def test_run_batch_partial_failure() -> None:
     """One machine fails but others succeed; all are cleaned up."""
     # Machine 1 succeeds, Machine 2 fails at creation
     create_responses = [
         httpx.Response(200, json=_machine_response("m_ok")),
         httpx.Response(422, text="bad config"),
     ]
-    respx.post(f"{FLY_API_BASE}/apps/{APP}/machines").mock(
-        side_effect=create_responses
-    )
+    respx.post(f"{FLY_API_BASE}/apps/{APP}/machines").mock(side_effect=create_responses)
 
     # Success path for m_ok
-    respx.get(
-        f"{FLY_API_BASE}/apps/{APP}/machines/m_ok/wait?state=stopped"
-    ).mock(return_value=httpx.Response(200, json={}))
+    respx.get(f"{FLY_API_BASE}/apps/{APP}/machines/m_ok/wait?state=stopped").mock(
+        return_value=httpx.Response(200, json={})
+    )
     respx.get(f"{FLY_API_BASE}/apps/{APP}/machines/m_ok").mock(
         return_value=httpx.Response(200, json=_stopped_response("m_ok", 0))
     )
     respx.post(f"{FLY_API_BASE}/apps/{APP}/machines/m_ok/stop").mock(
         return_value=httpx.Response(200, json={})
     )
-    respx.delete(
-        f"{FLY_API_BASE}/apps/{APP}/machines/m_ok?force=true"
-    ).mock(return_value=httpx.Response(200, json={}))
+    respx.delete(f"{FLY_API_BASE}/apps/{APP}/machines/m_ok?force=true").mock(
+        return_value=httpx.Response(200, json={})
+    )
 
     executor = ConcurrentExecutor(APP, token=TOKEN)
     requests = [
@@ -280,37 +287,35 @@ async def test_run_batch_partial_failure():
 
 
 @respx.mock
-async def test_run_batch_respects_max_concurrency():
+async def test_run_batch_respects_max_concurrency() -> None:
     """With max_concurrency=1, executions run sequentially (not truly parallel)."""
     machine_ids = ["m_seq_1", "m_seq_2"]
     execution_order: list[str] = []
 
     create_call_count = 0
 
-    async def create_handler(request):
+    async def create_handler(request: httpx.Request) -> httpx.Response:
         nonlocal create_call_count
         mid = machine_ids[create_call_count]
         create_call_count += 1
         execution_order.append(f"create_{mid}")
         return httpx.Response(200, json=_machine_response(mid))
 
-    respx.post(f"{FLY_API_BASE}/apps/{APP}/machines").mock(
-        side_effect=create_handler
-    )
+    respx.post(f"{FLY_API_BASE}/apps/{APP}/machines").mock(side_effect=create_handler)
 
     for mid in machine_ids:
-        respx.get(
-            f"{FLY_API_BASE}/apps/{APP}/machines/{mid}/wait?state=stopped"
-        ).mock(return_value=httpx.Response(200, json={}))
+        respx.get(f"{FLY_API_BASE}/apps/{APP}/machines/{mid}/wait?state=stopped").mock(
+            return_value=httpx.Response(200, json={})
+        )
         respx.get(f"{FLY_API_BASE}/apps/{APP}/machines/{mid}").mock(
             return_value=httpx.Response(200, json=_stopped_response(mid, 0))
         )
         respx.post(f"{FLY_API_BASE}/apps/{APP}/machines/{mid}/stop").mock(
             return_value=httpx.Response(200, json={})
         )
-        respx.delete(
-            f"{FLY_API_BASE}/apps/{APP}/machines/{mid}?force=true"
-        ).mock(return_value=httpx.Response(200, json={}))
+        respx.delete(f"{FLY_API_BASE}/apps/{APP}/machines/{mid}?force=true").mock(
+            return_value=httpx.Response(200, json={})
+        )
 
     executor = ConcurrentExecutor(APP, token=TOKEN, max_concurrency=1)
     requests = [
@@ -332,7 +337,7 @@ async def test_run_batch_respects_max_concurrency():
 
 
 @respx.mock
-async def test_run_batch_all_fail():
+async def test_run_batch_all_fail() -> None:
     """When all executions fail, batch captures all errors without crashing."""
     respx.post(f"{FLY_API_BASE}/apps/{APP}/machines").mock(
         return_value=httpx.Response(500, text="server down")
@@ -360,7 +365,7 @@ async def test_run_batch_all_fail():
 
 
 @respx.mock
-async def test_run_batch_nonzero_exit_is_failure():
+async def test_run_batch_nonzero_exit_is_failure() -> None:
     """A machine exiting with non-zero code is captured as a failure, not an error."""
     _mock_full_lifecycle("m_nonzero")
     # Override the stopped response to return exit code 1
@@ -387,7 +392,7 @@ async def test_run_batch_nonzero_exit_is_failure():
 
 
 @respx.mock
-async def test_executor_reuse():
+async def test_executor_reuse() -> None:
     """An executor can run multiple batches without issues."""
     for batch_num in range(2):
         mid = f"m_reuse_{batch_num}"
@@ -414,29 +419,28 @@ async def test_executor_reuse():
 
 
 @respx.mock
-async def test_results_preserve_request_order():
+async def test_results_preserve_request_order() -> None:
     """Results are returned in the same order as the input requests."""
     machine_ids = ["m_order_a", "m_order_b"]
     respx.post(f"{FLY_API_BASE}/apps/{APP}/machines").mock(
         side_effect=[
-            httpx.Response(200, json=_machine_response(mid))
-            for mid in machine_ids
+            httpx.Response(200, json=_machine_response(mid)) for mid in machine_ids
         ]
     )
 
     for mid in machine_ids:
-        respx.get(
-            f"{FLY_API_BASE}/apps/{APP}/machines/{mid}/wait?state=stopped"
-        ).mock(return_value=httpx.Response(200, json={}))
+        respx.get(f"{FLY_API_BASE}/apps/{APP}/machines/{mid}/wait?state=stopped").mock(
+            return_value=httpx.Response(200, json={})
+        )
         respx.get(f"{FLY_API_BASE}/apps/{APP}/machines/{mid}").mock(
             return_value=httpx.Response(200, json=_stopped_response(mid, 0))
         )
         respx.post(f"{FLY_API_BASE}/apps/{APP}/machines/{mid}/stop").mock(
             return_value=httpx.Response(200, json={})
         )
-        respx.delete(
-            f"{FLY_API_BASE}/apps/{APP}/machines/{mid}?force=true"
-        ).mock(return_value=httpx.Response(200, json={}))
+        respx.delete(f"{FLY_API_BASE}/apps/{APP}/machines/{mid}?force=true").mock(
+            return_value=httpx.Response(200, json={})
+        )
 
     executor = ConcurrentExecutor(APP, token=TOKEN)
     requests = [
@@ -456,7 +460,7 @@ async def test_results_preserve_request_order():
 
 
 @respx.mock
-async def test_machines_run_truly_in_parallel():
+async def test_machines_run_truly_in_parallel() -> None:
     """All machines are created before any one finishes (proven by asyncio.Event).
 
     This test would deadlock if machines ran sequentially: machine 0's
@@ -488,18 +492,18 @@ async def test_machines_run_truly_in_parallel():
     respx.post(f"{FLY_API_BASE}/apps/{APP}/machines").mock(side_effect=create_handler)
 
     for mid in machine_ids:
-        respx.get(
-            f"{FLY_API_BASE}/apps/{APP}/machines/{mid}/wait?state=stopped"
-        ).mock(side_effect=wait_handler)
+        respx.get(f"{FLY_API_BASE}/apps/{APP}/machines/{mid}/wait?state=stopped").mock(
+            side_effect=wait_handler
+        )
         respx.get(f"{FLY_API_BASE}/apps/{APP}/machines/{mid}").mock(
             return_value=httpx.Response(200, json=_stopped_response(mid, 0))
         )
         respx.post(f"{FLY_API_BASE}/apps/{APP}/machines/{mid}/stop").mock(
             return_value=httpx.Response(200, json={})
         )
-        respx.delete(
-            f"{FLY_API_BASE}/apps/{APP}/machines/{mid}?force=true"
-        ).mock(return_value=httpx.Response(200, json={}))
+        respx.delete(f"{FLY_API_BASE}/apps/{APP}/machines/{mid}?force=true").mock(
+            return_value=httpx.Response(200, json={})
+        )
 
     executor = ConcurrentExecutor(APP, token=TOKEN)
     requests = [
@@ -523,7 +527,7 @@ async def test_machines_run_truly_in_parallel():
 
 
 @respx.mock
-async def test_concurrent_machines_are_independent():
+async def test_concurrent_machines_are_independent() -> None:
     """Each concurrent execution uses its own machine ID; they don't interfere."""
     machine_ids = ["m_ind_1", "m_ind_2"]
     seen_machine_ids: set[str] = set()
@@ -531,9 +535,7 @@ async def test_concurrent_machines_are_independent():
     create_responses = [
         httpx.Response(200, json=_machine_response(mid)) for mid in machine_ids
     ]
-    respx.post(f"{FLY_API_BASE}/apps/{APP}/machines").mock(
-        side_effect=create_responses
-    )
+    respx.post(f"{FLY_API_BASE}/apps/{APP}/machines").mock(side_effect=create_responses)
 
     async def wait_handler(request: httpx.Request) -> httpx.Response:
         # Extract machine id from URL path and record it
@@ -542,18 +544,18 @@ async def test_concurrent_machines_are_independent():
         return httpx.Response(200, json={})
 
     for mid in machine_ids:
-        respx.get(
-            f"{FLY_API_BASE}/apps/{APP}/machines/{mid}/wait?state=stopped"
-        ).mock(side_effect=wait_handler)
+        respx.get(f"{FLY_API_BASE}/apps/{APP}/machines/{mid}/wait?state=stopped").mock(
+            side_effect=wait_handler
+        )
         respx.get(f"{FLY_API_BASE}/apps/{APP}/machines/{mid}").mock(
             return_value=httpx.Response(200, json=_stopped_response(mid, 0))
         )
         respx.post(f"{FLY_API_BASE}/apps/{APP}/machines/{mid}/stop").mock(
             return_value=httpx.Response(200, json={})
         )
-        respx.delete(
-            f"{FLY_API_BASE}/apps/{APP}/machines/{mid}?force=true"
-        ).mock(return_value=httpx.Response(200, json={}))
+        respx.delete(f"{FLY_API_BASE}/apps/{APP}/machines/{mid}?force=true").mock(
+            return_value=httpx.Response(200, json={})
+        )
 
     executor = ConcurrentExecutor(APP, token=TOKEN)
     requests = [
@@ -571,5 +573,7 @@ async def test_concurrent_machines_are_independent():
     # Each request got its own unique machine
     assert seen_machine_ids == set(machine_ids)
     # Each result references its own machine id
-    result_machine_ids = {r.run_result.machine_id for r in batch.results if r.run_result}
+    result_machine_ids = {
+        r.run_result.machine_id for r in batch.results if r.run_result
+    }
     assert result_machine_ids == set(machine_ids)

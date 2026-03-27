@@ -1,7 +1,8 @@
 """Tests for AC 5: Claude Code runs the user-provided prompt string inside the machine.
 
 Validates the full prompt pipeline:
-  MachineConfig.prompt → FLAUDE_PROMPT env var → entrypoint.sh → claude -p -- "$FLAUDE_PROMPT"
+  MachineConfig.prompt → FLAUDE_PROMPT env var → entrypoint.sh
+  → claude -p -- "$FLAUDE_PROMPT"
 
 Tests cover:
 - Prompt text arrives correctly at the claude CLI invocation
@@ -30,7 +31,7 @@ ENTRYPOINT = Path(__file__).parent.parent / "flaude" / "entrypoint.sh"
 
 
 @pytest.fixture
-def prompt_env(tmp_path: Path):
+def prompt_env(tmp_path: Path) -> dict:
     """Create a mock environment that captures the exact prompt passed to claude."""
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -44,20 +45,23 @@ def prompt_env(tmp_path: Path):
 
     # Mock git: no-op
     mock_git = bin_dir / "git"
-    mock_git.write_text(textwrap.dedent("""\
+    mock_git.write_text(
+        textwrap.dedent("""\
         #!/usr/bin/env bash
         if [ "$1" = "clone" ]; then
             target="${@: -1}"
             mkdir -p "$target"
         fi
         exit 0
-    """))
+    """)
+    )
     mock_git.chmod(mock_git.stat().st_mode | stat.S_IEXEC)
 
     # Mock claude: captures the prompt to a file for assertion.
     # Handles `claude -p -- "prompt"` — the prompt is the arg after `--`.
     mock_claude = bin_dir / "claude"
-    mock_claude.write_text(textwrap.dedent(f"""\
+    mock_claude.write_text(
+        textwrap.dedent(f"""\
         #!/usr/bin/env bash
         # Skip flags and -- separator to find the prompt argument
         PROMPT=""
@@ -83,7 +87,8 @@ def prompt_env(tmp_path: Path):
         echo "Claude says: processing prompt"
         EXIT_CODE=$(cat {exit_code_file})
         exit $EXIT_CODE
-    """))
+    """)
+    )
     mock_claude.chmod(mock_claude.stat().st_mode | stat.S_IEXEC)
 
     home = tmp_path / "home"
@@ -105,7 +110,12 @@ def prompt_env(tmp_path: Path):
     }
 
 
-def _run(prompt_env: dict, prompt: str, extra_env: dict | None = None, expect_fail: bool = False) -> subprocess.CompletedProcess:
+def _run(
+    prompt_env: dict,
+    prompt: str,
+    extra_env: dict | None = None,
+    expect_fail: bool = False,
+) -> subprocess.CompletedProcess:
     """Run the entrypoint with the given prompt."""
     env = dict(prompt_env["env"])
     env["FLAUDE_PROMPT"] = prompt
@@ -132,7 +142,7 @@ def _run(prompt_env: dict, prompt: str, extra_env: dict | None = None, expect_fa
 
 def _captured_prompt(prompt_env: dict) -> str:
     """Read the prompt that was captured by the mock claude."""
-    return prompt_env["prompt_file"].read_text()
+    return str(prompt_env["prompt_file"].read_text())
 
 
 # ---------------------------------------------------------------------------
@@ -143,22 +153,24 @@ def _captured_prompt(prompt_env: dict) -> str:
 class TestPromptDelivery:
     """Verify that the prompt string reaches the claude CLI correctly."""
 
-    def test_simple_prompt(self, prompt_env):
+    def test_simple_prompt(self, prompt_env: dict) -> None:
         """A simple text prompt is passed to claude."""
         _run(prompt_env, "Fix the bug in main.py")
         assert _captured_prompt(prompt_env) == "Fix the bug in main.py"
 
-    def test_prompt_with_spaces(self, prompt_env):
+    def test_prompt_with_spaces(self, prompt_env: dict) -> None:
         """Prompts with spaces are preserved as a single argument."""
         _run(prompt_env, "Please review the code and fix any issues")
-        assert _captured_prompt(prompt_env) == "Please review the code and fix any issues"
+        assert (
+            _captured_prompt(prompt_env) == "Please review the code and fix any issues"
+        )
 
-    def test_prompt_appears_in_flaude_log(self, prompt_env):
+    def test_prompt_appears_in_flaude_log(self, prompt_env: dict) -> None:
         """The flaude log shows Claude Code is running."""
         result = _run(prompt_env, "Test prompt")
         assert "[flaude] Running Claude Code" in result.stdout
 
-    def test_prompt_exit_code_logged(self, prompt_env):
+    def test_prompt_exit_code_logged(self, prompt_env: dict) -> None:
         """Exit code is logged after Claude Code completes."""
         result = _run(prompt_env, "Test prompt")
         assert "[flaude] Claude Code exited with code 0" in result.stdout
@@ -173,44 +185,46 @@ class TestPromptDelivery:
 class TestPromptEdgeCases:
     """Prompts with special characters, newlines, etc."""
 
-    def test_prompt_with_single_quotes(self, prompt_env):
+    def test_prompt_with_single_quotes(self, prompt_env: dict) -> None:
         """Single quotes in prompts are handled."""
         _run(prompt_env, "Fix the bug in O'Brien's module")
         assert _captured_prompt(prompt_env) == "Fix the bug in O'Brien's module"
 
-    def test_prompt_with_double_quotes(self, prompt_env):
+    def test_prompt_with_double_quotes(self, prompt_env: dict) -> None:
         """Double quotes in prompts are handled."""
         _run(prompt_env, 'Add a "hello world" function')
         assert _captured_prompt(prompt_env) == 'Add a "hello world" function'
 
-    def test_prompt_with_backticks(self, prompt_env):
+    def test_prompt_with_backticks(self, prompt_env: dict) -> None:
         """Backticks in prompts are preserved."""
         _run(prompt_env, "Run `pytest` and fix failures")
         assert _captured_prompt(prompt_env) == "Run `pytest` and fix failures"
 
-    def test_prompt_with_dollar_signs(self, prompt_env):
+    def test_prompt_with_dollar_signs(self, prompt_env: dict) -> None:
         """Dollar signs don't cause variable expansion issues."""
         # Dollar sign at end of string (no variable name after it)
         _run(prompt_env, "Format the price as $100")
         assert _captured_prompt(prompt_env) == "Format the price as $100"
 
-    def test_prompt_starting_with_dash(self, prompt_env):
+    def test_prompt_starting_with_dash(self, prompt_env: dict) -> None:
         """Prompts starting with - are not parsed as CLI flags."""
         _run(prompt_env, "-v flag should be added to the test runner")
-        assert _captured_prompt(prompt_env) == "-v flag should be added to the test runner"
+        assert (
+            _captured_prompt(prompt_env) == "-v flag should be added to the test runner"
+        )
 
-    def test_prompt_starting_with_double_dash(self, prompt_env):
+    def test_prompt_starting_with_double_dash(self, prompt_env: dict) -> None:
         """Prompts starting with -- are not parsed as CLI flags."""
         _run(prompt_env, "--verbose mode needs fixing")
         assert _captured_prompt(prompt_env) == "--verbose mode needs fixing"
 
-    def test_prompt_with_newlines(self, prompt_env):
+    def test_prompt_with_newlines(self, prompt_env: dict) -> None:
         """Multi-line prompts are preserved."""
         multiline = "Step 1: Read the code\nStep 2: Fix bugs\nStep 3: Add tests"
         _run(prompt_env, multiline)
         assert _captured_prompt(prompt_env) == multiline
 
-    def test_prompt_with_parentheses_and_brackets(self, prompt_env):
+    def test_prompt_with_parentheses_and_brackets(self, prompt_env: dict) -> None:
         """Parentheses and brackets are safe."""
         _run(prompt_env, "Fix function(arg) and array[0]")
         assert _captured_prompt(prompt_env) == "Fix function(arg) and array[0]"
@@ -224,14 +238,14 @@ class TestPromptEdgeCases:
 class TestExitCodePropagation:
     """Verify that non-zero exit codes from claude propagate correctly."""
 
-    def test_nonzero_exit_propagates(self, prompt_env):
+    def test_nonzero_exit_propagates(self, prompt_env: dict) -> None:
         """Non-zero exit from claude causes entrypoint to exit with same code."""
         prompt_env["exit_code_file"].write_text("1")
         result = _run(prompt_env, "This will fail", expect_fail=True)
         assert result.returncode == 1
         assert "[flaude:exit:1]" in result.stdout
 
-    def test_exit_code_137_propagates(self, prompt_env):
+    def test_exit_code_137_propagates(self, prompt_env: dict) -> None:
         """OOM-killed exit code 137 propagates."""
         prompt_env["exit_code_file"].write_text("137")
         result = _run(prompt_env, "OOM test", expect_fail=True)
@@ -247,7 +261,7 @@ class TestExitCodePropagation:
 class TestConfigToEnvPipeline:
     """Verify prompt flows from MachineConfig to the FLAUDE_PROMPT env var."""
 
-    def test_prompt_in_machine_config_payload(self):
+    def test_prompt_in_machine_config_payload(self) -> None:
         """MachineConfig.prompt becomes FLAUDE_PROMPT in the Fly API payload."""
         config = MachineConfig(
             claude_code_oauth_token="test-token",
@@ -257,7 +271,7 @@ class TestConfigToEnvPipeline:
         env = payload["config"]["env"]
         assert env["FLAUDE_PROMPT"] == "Refactor the database layer"
 
-    def test_multiline_prompt_in_payload(self):
+    def test_multiline_prompt_in_payload(self) -> None:
         """Multi-line prompts are preserved in the env var payload."""
         prompt = "Step 1: Read\nStep 2: Fix\nStep 3: Test"
         config = MachineConfig(
@@ -267,9 +281,9 @@ class TestConfigToEnvPipeline:
         payload = build_machine_config(config)
         assert payload["config"]["env"]["FLAUDE_PROMPT"] == prompt
 
-    def test_prompt_with_special_chars_in_payload(self):
+    def test_prompt_with_special_chars_in_payload(self) -> None:
         """Special characters in prompts survive config building."""
-        prompt = 'Fix O\'Brien\'s "helper" function ($cost > 0)'
+        prompt = "Fix O'Brien's \"helper\" function ($cost > 0)"
         config = MachineConfig(
             claude_code_oauth_token="test-token",
             prompt=prompt,
@@ -277,7 +291,7 @@ class TestConfigToEnvPipeline:
         payload = build_machine_config(config)
         assert payload["config"]["env"]["FLAUDE_PROMPT"] == prompt
 
-    def test_empty_prompt_rejected(self):
+    def test_empty_prompt_rejected(self) -> None:
         """Empty prompt raises ValueError during config building."""
         config = MachineConfig(
             claude_code_oauth_token="test-token",
@@ -295,34 +309,38 @@ class TestConfigToEnvPipeline:
 class TestPromptWorkingDirectory:
     """Verify claude runs in the correct working directory."""
 
-    def test_runs_in_workspace_without_repos(self, prompt_env):
+    def test_runs_in_workspace_without_repos(self, prompt_env: dict) -> None:
         """Without repos, claude runs in the workspace root."""
         # Enhance mock claude to capture pwd
         cwd_file = prompt_env["tmp_path"] / "captured_cwd.txt"
         mock_claude = prompt_env["bin_dir"] / "claude"
-        mock_claude.write_text(textwrap.dedent(f"""\
+        mock_claude.write_text(
+            textwrap.dedent(f"""\
             #!/usr/bin/env bash
             pwd > {cwd_file}
             printf '%s' "${{@: -1}}" > {prompt_env["prompt_file"]}
             echo "done"
             exit 0
-        """))
+        """)
+        )
 
         _run(prompt_env, "Test prompt")
         cwd = cwd_file.read_text().strip()
         assert cwd == str(prompt_env["workspace"])
 
-    def test_runs_in_repo_dir_with_single_repo(self, prompt_env):
+    def test_runs_in_repo_dir_with_single_repo(self, prompt_env: dict) -> None:
         """With a single repo, claude runs inside the cloned repo directory."""
         cwd_file = prompt_env["tmp_path"] / "captured_cwd.txt"
         mock_claude = prompt_env["bin_dir"] / "claude"
-        mock_claude.write_text(textwrap.dedent(f"""\
+        mock_claude.write_text(
+            textwrap.dedent(f"""\
             #!/usr/bin/env bash
             pwd > {cwd_file}
             printf '%s' "${{@: -1}}" > {prompt_env["prompt_file"]}
             echo "done"
             exit 0
-        """))
+        """)
+        )
 
         repos = json.dumps([{"url": "https://github.com/org/my-app"}])
         _run(prompt_env, "Fix bugs", extra_env={"FLAUDE_REPOS": repos})

@@ -9,9 +9,9 @@ policy, and other configuration.
 from __future__ import annotations
 
 import json
+from typing import Any
 
 import httpx
-import pytest
 import respx
 
 from flaude.fly_client import FLY_API_BASE
@@ -37,25 +37,25 @@ MACHINE_RESPONSE = {
 }
 
 
-def _cfg(**overrides) -> MachineConfig:
+def _cfg(**overrides: Any) -> MachineConfig:
     defaults = {
         "claude_code_oauth_token": "oauth-tok",
         "prompt": "Fix the bug",
     }
     defaults.update(overrides)
-    return MachineConfig(**defaults)
+    return MachineConfig(**defaults)  # type: ignore[arg-type]
 
 
-def _mock_create():
+def _mock_create() -> Any:
     """Mock the create-machine endpoint and return the route for inspection."""
     return respx.post(f"{FLY_API_BASE}/apps/{APP}/machines").mock(
         return_value=httpx.Response(200, json=MACHINE_RESPONSE)
     )
 
 
-async def _get_payload(route) -> dict:
+async def _get_payload(route: Any) -> dict[str, Any]:
     """Extract the JSON body sent in the first call to the mocked route."""
-    return json.loads(route.calls[0].request.content)
+    return dict(json.loads(route.calls[0].request.content))
 
 
 # ---------------------------------------------------------------------------
@@ -64,7 +64,7 @@ async def _get_payload(route) -> dict:
 
 
 @respx.mock
-async def test_payload_contains_claude_oauth_token():
+async def test_payload_contains_claude_oauth_token() -> None:
     """CLAUDE_CODE_OAUTH_TOKEN is set from config."""
     route = _mock_create()
     await create_machine(APP, _cfg(claude_code_oauth_token="my-secret"), token=TOKEN)
@@ -73,7 +73,7 @@ async def test_payload_contains_claude_oauth_token():
 
 
 @respx.mock
-async def test_payload_contains_prompt():
+async def test_payload_contains_prompt() -> None:
     """FLAUDE_PROMPT is set from the prompt field."""
     route = _mock_create()
     await create_machine(APP, _cfg(prompt="Refactor the module"), token=TOKEN)
@@ -87,7 +87,7 @@ async def test_payload_contains_prompt():
 
 
 @respx.mock
-async def test_payload_contains_github_credentials():
+async def test_payload_contains_github_credentials() -> None:
     """GITHUB_USERNAME and GITHUB_TOKEN appear when set."""
     route = _mock_create()
     cfg = _cfg(github_username="octocat", github_token="ghp_abc123")
@@ -99,7 +99,7 @@ async def test_payload_contains_github_credentials():
 
 
 @respx.mock
-async def test_payload_omits_github_when_not_set():
+async def test_payload_omits_github_when_not_set() -> None:
     """GITHUB_USERNAME and GITHUB_TOKEN are absent when not provided."""
     route = _mock_create()
     await create_machine(APP, _cfg(), token=TOKEN)
@@ -115,7 +115,7 @@ async def test_payload_omits_github_when_not_set():
 
 
 @respx.mock
-async def test_payload_contains_repos_as_json():
+async def test_payload_contains_repos_as_json() -> None:
     """FLAUDE_REPOS contains JSON array of repo specs."""
     route = _mock_create()
     repos = ["https://github.com/a/b", "https://github.com/c/d"]
@@ -128,7 +128,7 @@ async def test_payload_contains_repos_as_json():
 
 
 @respx.mock
-async def test_payload_omits_repos_when_empty():
+async def test_payload_omits_repos_when_empty() -> None:
     """FLAUDE_REPOS is absent when no repos specified."""
     route = _mock_create()
     await create_machine(APP, _cfg(), token=TOKEN)
@@ -137,7 +137,7 @@ async def test_payload_omits_repos_when_empty():
 
 
 @respx.mock
-async def test_payload_single_repo():
+async def test_payload_single_repo() -> None:
     """Single repo is serialised as JSON array with one entry."""
     route = _mock_create()
     await create_machine(APP, _cfg(repos=["https://github.com/x/y"]), token=TOKEN)
@@ -148,14 +148,18 @@ async def test_payload_single_repo():
 
 
 @respx.mock
-async def test_payload_repo_spec_with_branch_and_target():
+async def test_payload_repo_spec_with_branch_and_target() -> None:
     """RepoSpec with branch and target_dir appears in JSON payload."""
     route = _mock_create()
     repos = [RepoSpec(url="https://github.com/a/b", branch="main", target_dir="custom")]
     await create_machine(APP, _cfg(repos=repos), token=TOKEN)
     body = await _get_payload(route)
     parsed = json.loads(body["config"]["env"]["FLAUDE_REPOS"])
-    assert parsed[0] == {"url": "https://github.com/a/b", "branch": "main", "target_dir": "custom"}
+    assert parsed[0] == {
+        "url": "https://github.com/a/b",
+        "branch": "main",
+        "target_dir": "custom",
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -164,7 +168,7 @@ async def test_payload_repo_spec_with_branch_and_target():
 
 
 @respx.mock
-async def test_payload_default_region():
+async def test_payload_default_region() -> None:
     """Default region matches DEFAULT_REGION."""
     route = _mock_create()
     await create_machine(APP, _cfg(), token=TOKEN)
@@ -173,7 +177,7 @@ async def test_payload_default_region():
 
 
 @respx.mock
-async def test_payload_default_image():
+async def test_payload_default_image() -> None:
     """Default image matches DEFAULT_IMAGE."""
     route = _mock_create()
     await create_machine(APP, _cfg(), token=TOKEN)
@@ -182,7 +186,7 @@ async def test_payload_default_image():
 
 
 @respx.mock
-async def test_payload_default_vm_sizing():
+async def test_payload_default_vm_sizing() -> None:
     """Default VM sizing uses DEFAULT_VM_CPUS and DEFAULT_VM_MEMORY_MB."""
     route = _mock_create()
     await create_machine(APP, _cfg(), token=TOKEN)
@@ -199,7 +203,7 @@ async def test_payload_default_vm_sizing():
 
 
 @respx.mock
-async def test_payload_auto_destroy_enabled_by_default():
+async def test_payload_auto_destroy_enabled_by_default() -> None:
     """auto_destroy is True by default."""
     route = _mock_create()
     await create_machine(APP, _cfg(), token=TOKEN)
@@ -208,7 +212,7 @@ async def test_payload_auto_destroy_enabled_by_default():
 
 
 @respx.mock
-async def test_payload_auto_destroy_can_be_disabled():
+async def test_payload_auto_destroy_can_be_disabled() -> None:
     """auto_destroy can be set to False."""
     route = _mock_create()
     await create_machine(APP, _cfg(auto_destroy=False), token=TOKEN)
@@ -217,7 +221,7 @@ async def test_payload_auto_destroy_can_be_disabled():
 
 
 @respx.mock
-async def test_payload_restart_policy_is_no():
+async def test_payload_restart_policy_is_no() -> None:
     """Restart policy is 'no' so machines don't restart after completion."""
     route = _mock_create()
     await create_machine(APP, _cfg(), token=TOKEN)
@@ -231,7 +235,7 @@ async def test_payload_restart_policy_is_no():
 
 
 @respx.mock
-async def test_payload_metadata_includes_managed_by():
+async def test_payload_metadata_includes_managed_by() -> None:
     """Metadata always includes managed_by=flaude."""
     route = _mock_create()
     await create_machine(APP, _cfg(), token=TOKEN)
@@ -240,7 +244,7 @@ async def test_payload_metadata_includes_managed_by():
 
 
 @respx.mock
-async def test_payload_custom_metadata_merged():
+async def test_payload_custom_metadata_merged() -> None:
     """Custom metadata is merged alongside managed_by."""
     route = _mock_create()
     cfg = _cfg(metadata={"run_id": "r42", "task": "review"})
@@ -258,7 +262,7 @@ async def test_payload_custom_metadata_merged():
 
 
 @respx.mock
-async def test_payload_custom_region():
+async def test_payload_custom_region() -> None:
     """Region can be overridden."""
     route = _mock_create()
     await create_machine(APP, _cfg(region="lhr"), token=TOKEN)
@@ -267,7 +271,7 @@ async def test_payload_custom_region():
 
 
 @respx.mock
-async def test_payload_custom_vm_sizing():
+async def test_payload_custom_vm_sizing() -> None:
     """VM cpus and memory can be overridden."""
     route = _mock_create()
     cfg = _cfg(vm_cpus=4, vm_memory_mb=8192)
@@ -279,7 +283,7 @@ async def test_payload_custom_vm_sizing():
 
 
 @respx.mock
-async def test_payload_custom_image():
+async def test_payload_custom_image() -> None:
     """Custom image overrides the default."""
     route = _mock_create()
     cfg = _cfg(image="registry.fly.io/custom:v2")
@@ -289,7 +293,7 @@ async def test_payload_custom_image():
 
 
 @respx.mock
-async def test_payload_extra_env_vars():
+async def test_payload_extra_env_vars() -> None:
     """User-supplied env vars are included in the payload."""
     route = _mock_create()
     cfg = _cfg(env={"MY_VAR": "hello", "DEBUG": "1"})
@@ -303,7 +307,7 @@ async def test_payload_extra_env_vars():
 
 
 @respx.mock
-async def test_payload_extra_env_can_override_defaults():
+async def test_payload_extra_env_can_override_defaults() -> None:
     """User-supplied env vars can override built-in defaults."""
     route = _mock_create()
     cfg = _cfg(env={"FLAUDE_PROMPT": "overridden"})
@@ -318,7 +322,7 @@ async def test_payload_extra_env_can_override_defaults():
 
 
 @respx.mock
-async def test_payload_includes_name_when_provided():
+async def test_payload_includes_name_when_provided() -> None:
     """Machine name appears at top level of payload when set."""
     route = _mock_create()
     await create_machine(APP, _cfg(), name="my-worker", token=TOKEN)
@@ -327,7 +331,7 @@ async def test_payload_includes_name_when_provided():
 
 
 @respx.mock
-async def test_payload_omits_name_when_not_provided():
+async def test_payload_omits_name_when_not_provided() -> None:
     """Payload has no 'name' key when name is not given."""
     route = _mock_create()
     await create_machine(APP, _cfg(), token=TOKEN)
@@ -341,7 +345,7 @@ async def test_payload_omits_name_when_not_provided():
 
 
 @respx.mock
-async def test_payload_full_config():
+async def test_payload_full_config() -> None:
     """A fully-configured machine has all expected fields in the payload."""
     route = _mock_create()
     cfg = MachineConfig(

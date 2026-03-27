@@ -10,8 +10,7 @@ import os
 
 import pytest
 
-from flaude import ensure_app, FlyApp
-
+from flaude import FlyApp, ensure_app
 
 # -- E2E credential fixtures (session-scoped, skip if absent) ----------------
 

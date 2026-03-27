@@ -10,13 +10,11 @@ import pytest
 from flaude.log_drain import (
     LogCollector,
     LogDrainServer,
-    LogEntry,
     async_iter_queue,
     drain_queue,
     parse_log_entry,
     parse_ndjson,
 )
-
 
 # ---------------------------------------------------------------------------
 # parse_ndjson
@@ -24,13 +22,13 @@ from flaude.log_drain import (
 
 
 class TestParseNdjson:
-    def test_single_line(self):
+    def test_single_line(self) -> None:
         body = json.dumps({"message": "hello"}).encode()
         result = parse_ndjson(body)
         assert len(result) == 1
         assert result[0]["message"] == "hello"
 
-    def test_multiple_lines(self):
+    def test_multiple_lines(self) -> None:
         lines = [
             json.dumps({"message": "line1"}),
             json.dumps({"message": "line2"}),
@@ -41,23 +39,23 @@ class TestParseNdjson:
         assert len(result) == 3
         assert [r["message"] for r in result] == ["line1", "line2", "line3"]
 
-    def test_skips_blank_lines(self):
+    def test_skips_blank_lines(self) -> None:
         body = b'{"a":1}\n\n{"b":2}\n\n'
         result = parse_ndjson(body)
         assert len(result) == 2
 
-    def test_skips_malformed_lines(self):
+    def test_skips_malformed_lines(self) -> None:
         body = b'{"good":1}\nnot-json\n{"also_good":2}\n'
         result = parse_ndjson(body)
         assert len(result) == 2
         assert result[0]["good"] == 1
         assert result[1]["also_good"] == 2
 
-    def test_empty_body(self):
+    def test_empty_body(self) -> None:
         assert parse_ndjson(b"") == []
         assert parse_ndjson(b"\n\n") == []
 
-    def test_non_dict_json_skipped(self):
+    def test_non_dict_json_skipped(self) -> None:
         body = b'[1,2,3]\n{"ok":true}\n'
         result = parse_ndjson(body)
         assert len(result) == 1
@@ -70,7 +68,7 @@ class TestParseNdjson:
 
 
 class TestParseLogEntry:
-    def test_fly_app_instance_format(self):
+    def test_fly_app_instance_format(self) -> None:
         """Fly log drain uses fly.app.instance for machine ID."""
         raw = {
             "fly": {"app": {"instance": "m-abc123", "name": "myapp"}},
@@ -86,7 +84,7 @@ class TestParseLogEntry:
         assert entry.app_name == "myapp"
         assert entry.timestamp == "2024-01-01T00:00:00Z"
 
-    def test_fly_machine_id_format(self):
+    def test_fly_machine_id_format(self) -> None:
         raw = {
             "fly": {"machine": {"id": "m-xyz789"}},
             "message": "test line",
@@ -97,36 +95,36 @@ class TestParseLogEntry:
         assert entry.machine_id == "m-xyz789"
         assert entry.stream == "stderr"
 
-    def test_flat_instance_field(self):
+    def test_flat_instance_field(self) -> None:
         raw = {"instance": "m-flat", "message": "flat format"}
         entry = parse_log_entry(raw)
         assert entry is not None
         assert entry.machine_id == "m-flat"
 
-    def test_flat_machine_id_field(self):
+    def test_flat_machine_id_field(self) -> None:
         raw = {"machine_id": "m-direct", "log": "using log field"}
         entry = parse_log_entry(raw)
         assert entry is not None
         assert entry.machine_id == "m-direct"
         assert entry.message == "using log field"
 
-    def test_missing_machine_id_returns_none(self):
+    def test_missing_machine_id_returns_none(self) -> None:
         raw = {"message": "no machine id"}
         assert parse_log_entry(raw) is None
 
-    def test_default_stream_is_stdout(self):
+    def test_default_stream_is_stdout(self) -> None:
         raw = {"instance": "m-1", "message": "no stream"}
         entry = parse_log_entry(raw)
         assert entry is not None
         assert entry.stream == "stdout"
 
-    def test_msg_field_alias(self):
+    def test_msg_field_alias(self) -> None:
         raw = {"instance": "m-1", "msg": "using msg"}
         entry = parse_log_entry(raw)
         assert entry is not None
         assert entry.message == "using msg"
 
-    def test_raw_preserved(self):
+    def test_raw_preserved(self) -> None:
         raw = {"instance": "m-1", "message": "test", "extra": "data"}
         entry = parse_log_entry(raw)
         assert entry is not None
@@ -139,29 +137,29 @@ class TestParseLogEntry:
 
 
 class TestLogCollector:
-    async def test_subscribe_creates_queue(self):
+    async def test_subscribe_creates_queue(self) -> None:
         collector = LogCollector()
         q = await collector.subscribe("m-1")
         assert isinstance(q, asyncio.Queue)
 
-    async def test_subscribe_returns_same_queue(self):
+    async def test_subscribe_returns_same_queue(self) -> None:
         collector = LogCollector()
         q1 = await collector.subscribe("m-1")
         q2 = await collector.subscribe("m-1")
         assert q1 is q2
 
-    async def test_push_delivers_to_subscriber(self):
+    async def test_push_delivers_to_subscriber(self) -> None:
         collector = LogCollector()
         q = await collector.subscribe("m-1")
         await collector.push("m-1", "hello")
         assert q.get_nowait() == "hello"
 
-    async def test_push_to_unknown_machine_is_silent(self):
+    async def test_push_to_unknown_machine_is_silent(self) -> None:
         collector = LogCollector()
         # Should not raise
         await collector.push("unknown", "dropped")
 
-    async def test_finish_sends_sentinel(self):
+    async def test_finish_sends_sentinel(self) -> None:
         collector = LogCollector()
         q = await collector.subscribe("m-1")
         await collector.push("m-1", "line1")
@@ -169,17 +167,17 @@ class TestLogCollector:
         assert q.get_nowait() == "line1"
         assert q.get_nowait() is None  # sentinel
 
-    async def test_finish_removes_from_registry(self):
+    async def test_finish_removes_from_registry(self) -> None:
         collector = LogCollector()
         await collector.subscribe("m-1")
         await collector.finish("m-1")
         assert "m-1" not in collector.machine_ids
 
-    async def test_finish_unknown_is_silent(self):
+    async def test_finish_unknown_is_silent(self) -> None:
         collector = LogCollector()
         await collector.finish("unknown")  # Should not raise
 
-    async def test_finish_all(self):
+    async def test_finish_all(self) -> None:
         collector = LogCollector()
         q1 = await collector.subscribe("m-1")
         q2 = await collector.subscribe("m-2")
@@ -191,13 +189,13 @@ class TestLogCollector:
         assert q2.get_nowait() == "b"
         assert q2.get_nowait() is None
 
-    async def test_machine_ids(self):
+    async def test_machine_ids(self) -> None:
         collector = LogCollector()
         await collector.subscribe("m-1")
         await collector.subscribe("m-2")
         assert sorted(collector.machine_ids) == ["m-1", "m-2"]
 
-    async def test_multiple_machines_isolated(self):
+    async def test_multiple_machines_isolated(self) -> None:
         collector = LogCollector()
         q1 = await collector.subscribe("m-1")
         q2 = await collector.subscribe("m-2")
@@ -215,7 +213,7 @@ class TestLogCollector:
 
 
 class TestDrainQueue:
-    async def test_drain_collects_all_lines(self):
+    async def test_drain_collects_all_lines(self) -> None:
         q: asyncio.Queue[str | None] = asyncio.Queue()
         await q.put("line1")
         await q.put("line2")
@@ -224,13 +222,13 @@ class TestDrainQueue:
         result = await drain_queue(q)
         assert result == ["line1", "line2", "line3"]
 
-    async def test_drain_empty_returns_empty(self):
+    async def test_drain_empty_returns_empty(self) -> None:
         q: asyncio.Queue[str | None] = asyncio.Queue()
         await q.put(None)
         result = await drain_queue(q)
         assert result == []
 
-    async def test_drain_timeout(self):
+    async def test_drain_timeout(self) -> None:
         q: asyncio.Queue[str | None] = asyncio.Queue()
         # No sentinel — should timeout
         with pytest.raises(asyncio.TimeoutError):
@@ -238,7 +236,7 @@ class TestDrainQueue:
 
 
 class TestAsyncIterQueue:
-    async def test_iterates_until_sentinel(self):
+    async def test_iterates_until_sentinel(self) -> None:
         q: asyncio.Queue[str | None] = asyncio.Queue()
         await q.put("a")
         await q.put("b")
@@ -247,7 +245,7 @@ class TestAsyncIterQueue:
         lines = [line async for line in async_iter_queue(q)]
         assert lines == ["a", "b", "c"]
 
-    async def test_empty_iteration(self):
+    async def test_empty_iteration(self) -> None:
         q: asyncio.Queue[str | None] = asyncio.Queue()
         await q.put(None)
         lines = [line async for line in async_iter_queue(q)]
@@ -260,7 +258,7 @@ class TestAsyncIterQueue:
 
 
 class TestLogDrainServer:
-    async def test_server_starts_and_stops(self):
+    async def test_server_starts_and_stops(self) -> None:
         collector = LogCollector()
         server = LogDrainServer(collector, port=0)
         await server.start()
@@ -270,7 +268,7 @@ class TestLogDrainServer:
         await server.stop()
         assert server.actual_port is None
 
-    async def test_receives_log_entries(self):
+    async def test_receives_log_entries(self) -> None:
         collector = LogCollector()
         q = await collector.subscribe("m-test-1")
         server = LogDrainServer(collector, port=0)
@@ -279,10 +277,19 @@ class TestLogDrainServer:
         try:
             # Send NDJSON log entries like Fly would
             entries = [
-                {"fly": {"app": {"instance": "m-test-1"}}, "message": "hello", "stream": "stdout"},
-                {"fly": {"app": {"instance": "m-test-1"}}, "message": "world", "stream": "stdout"},
+                {
+                    "fly": {"app": {"instance": "m-test-1"}},
+                    "message": "hello",
+                    "stream": "stdout",
+                },
+                {
+                    "fly": {"app": {"instance": "m-test-1"}},
+                    "message": "world",
+                    "stream": "stdout",
+                },
             ]
             body = "\n".join(json.dumps(e) for e in entries).encode()
+            assert server.actual_port is not None
             await _http_post(server.actual_port, body)
 
             # Allow processing
@@ -293,7 +300,7 @@ class TestLogDrainServer:
         finally:
             await server.stop()
 
-    async def test_filters_stderr_by_default(self):
+    async def test_filters_stderr_by_default(self) -> None:
         collector = LogCollector()
         q = await collector.subscribe("m-test-2")
         server = LogDrainServer(collector, port=0)
@@ -301,10 +308,19 @@ class TestLogDrainServer:
 
         try:
             entries = [
-                {"fly": {"app": {"instance": "m-test-2"}}, "message": "stdout-line", "stream": "stdout"},
-                {"fly": {"app": {"instance": "m-test-2"}}, "message": "stderr-line", "stream": "stderr"},
+                {
+                    "fly": {"app": {"instance": "m-test-2"}},
+                    "message": "stdout-line",
+                    "stream": "stdout",
+                },
+                {
+                    "fly": {"app": {"instance": "m-test-2"}},
+                    "message": "stderr-line",
+                    "stream": "stderr",
+                },
             ]
             body = "\n".join(json.dumps(e) for e in entries).encode()
+            assert server.actual_port is not None
             await _http_post(server.actual_port, body)
             await asyncio.sleep(0.1)
 
@@ -313,7 +329,7 @@ class TestLogDrainServer:
         finally:
             await server.stop()
 
-    async def test_includes_stderr_when_configured(self):
+    async def test_includes_stderr_when_configured(self) -> None:
         collector = LogCollector()
         q = await collector.subscribe("m-test-3")
         server = LogDrainServer(collector, port=0, include_stderr=True)
@@ -321,10 +337,19 @@ class TestLogDrainServer:
 
         try:
             entries = [
-                {"fly": {"app": {"instance": "m-test-3"}}, "message": "out", "stream": "stdout"},
-                {"fly": {"app": {"instance": "m-test-3"}}, "message": "err", "stream": "stderr"},
+                {
+                    "fly": {"app": {"instance": "m-test-3"}},
+                    "message": "out",
+                    "stream": "stdout",
+                },
+                {
+                    "fly": {"app": {"instance": "m-test-3"}},
+                    "message": "err",
+                    "stream": "stderr",
+                },
             ]
             body = "\n".join(json.dumps(e) for e in entries).encode()
+            assert server.actual_port is not None
             await _http_post(server.actual_port, body)
             await asyncio.sleep(0.1)
 
@@ -333,7 +358,7 @@ class TestLogDrainServer:
         finally:
             await server.stop()
 
-    async def test_routes_to_correct_machine(self):
+    async def test_routes_to_correct_machine(self) -> None:
         collector = LogCollector()
         q1 = await collector.subscribe("m-a")
         q2 = await collector.subscribe("m-b")
@@ -342,11 +367,24 @@ class TestLogDrainServer:
 
         try:
             entries = [
-                {"fly": {"app": {"instance": "m-a"}}, "message": "for-a", "stream": "stdout"},
-                {"fly": {"app": {"instance": "m-b"}}, "message": "for-b", "stream": "stdout"},
-                {"fly": {"app": {"instance": "m-a"}}, "message": "for-a-2", "stream": "stdout"},
+                {
+                    "fly": {"app": {"instance": "m-a"}},
+                    "message": "for-a",
+                    "stream": "stdout",
+                },
+                {
+                    "fly": {"app": {"instance": "m-b"}},
+                    "message": "for-b",
+                    "stream": "stdout",
+                },
+                {
+                    "fly": {"app": {"instance": "m-a"}},
+                    "message": "for-a-2",
+                    "stream": "stdout",
+                },
             ]
             body = "\n".join(json.dumps(e) for e in entries).encode()
+            assert server.actual_port is not None
             await _http_post(server.actual_port, body)
             await asyncio.sleep(0.1)
 
@@ -356,23 +394,28 @@ class TestLogDrainServer:
         finally:
             await server.stop()
 
-    async def test_unsubscribed_machine_logs_dropped(self):
+    async def test_unsubscribed_machine_logs_dropped(self) -> None:
         collector = LogCollector()
         server = LogDrainServer(collector, port=0)
         await server.start()
 
         try:
             entries = [
-                {"fly": {"app": {"instance": "m-unknown"}}, "message": "dropped", "stream": "stdout"},
+                {
+                    "fly": {"app": {"instance": "m-unknown"}},
+                    "message": "dropped",
+                    "stream": "stdout",
+                },
             ]
             body = "\n".join(json.dumps(e) for e in entries).encode()
             # Should not raise
+            assert server.actual_port is not None
             await _http_post(server.actual_port, body)
             await asyncio.sleep(0.1)
         finally:
             await server.stop()
 
-    async def test_end_to_end_with_drain(self):
+    async def test_end_to_end_with_drain(self) -> None:
         """Full flow: subscribe → receive logs → finish → drain."""
         collector = LogCollector()
         q = await collector.subscribe("m-e2e")
@@ -382,10 +425,15 @@ class TestLogDrainServer:
         try:
             # Simulate Fly sending logs
             entries = [
-                {"fly": {"app": {"instance": "m-e2e"}}, "message": f"line-{i}", "stream": "stdout"}
+                {
+                    "fly": {"app": {"instance": "m-e2e"}},
+                    "message": f"line-{i}",
+                    "stream": "stdout",
+                }
                 for i in range(5)
             ]
             body = "\n".join(json.dumps(e) for e in entries).encode()
+            assert server.actual_port is not None
             await _http_post(server.actual_port, body)
             await asyncio.sleep(0.1)
 
