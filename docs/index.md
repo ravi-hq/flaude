@@ -61,6 +61,7 @@ asyncio.run(main())
 
 ## Navigation
 
+- [Overview](overview.md) — why flaude exists and what you can build with it
 - [Getting Started](getting-started.md) — prerequisites and first-run tutorial
 - [Streaming Logs](guide/streaming.md) — real-time log streaming with `run_with_logs`
 - [Concurrent Execution](guide/concurrent.md) — run many prompts in parallel

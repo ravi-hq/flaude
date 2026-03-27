@@ -36,7 +36,7 @@ with `repo` scope and your GitHub username. See
 ### Docker (optional, custom images only)
 
 If you want to build and push a customized Docker image, you need Docker installed locally.
-The pre-built image at `registry.fly.io/flaude:latest` works for most use cases and
+The pre-built image at `ghcr.io/ravi-hq/flaude:latest` works for most use cases and
 requires no local Docker installation. See [Docker Image](guide/docker-image.md) for when
 you'd need this.
 
