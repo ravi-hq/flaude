@@ -1,0 +1,166 @@
+# flaude
+
+> On-demand Claude Code execution on Fly.io machines.
+
+flaude is a Python library that spins up ephemeral Fly.io VMs, runs Claude Code prompts against your repos, streams the output back, and auto-destroys the machines when done. No persistent infrastructure required.
+
+## Install
+
+```
+pip install flaude
+```
+
+Requires Python 3.11+. Only runtime dependency: httpx.
+
+## Prerequisites
+
+- Fly.io account with FLY_API_TOKEN environment variable set
+- Claude Code OAuth token (CLAUDE_CODE_OAUTH_TOKEN)
+- GitHub credentials (username + PAT) if cloning private repos
+
+## Quick Start
+
+### Run a prompt and wait for the result
+
+```python
+import asyncio
+from flaude import MachineConfig, ensure_app, run_and_destroy
+
+async def main():
+    app = await ensure_app("my-flaude-app")
+    config = MachineConfig(
+        claude_code_oauth_token="sk-ant-oat-...",
+        github_username="you",
+        github_token="ghp_...",
+        prompt="Find and fix any type errors in src/",
+        repos=["https://github.com/you/your-repo"],
+    )
+    result = await run_and_destroy(app.name, config)
+    print(f"Exit code: {result.exit_code}")
+
+asyncio.run(main())
+```
+
+### Stream logs in real time
+
+```python
+from flaude import MachineConfig, run_with_logs
+
+async def main():
+    config = MachineConfig(
+        claude_code_oauth_token="sk-ant-oat-...",
+        prompt="Refactor the auth module to use JWT",
+        repos=["https://github.com/you/your-repo"],
+    )
+    async with await run_with_logs("my-flaude-app", config) as stream:
+        async for line in stream:
+            print(line)
+    result = await stream.result()
+    print(f"Done: exit={result.exit_code}")
+```
+
+### Run multiple prompts concurrently
+
+```python
+from flaude import ConcurrentExecutor, ExecutionRequest, MachineConfig
+
+async def main():
+    executor = ConcurrentExecutor("my-flaude-app", max_concurrency=3)
+    requests = [
+        ExecutionRequest(
+            config=MachineConfig(prompt="Add tests for auth", claude_code_oauth_token="..."),
+            tag="auth-tests",
+        ),
+        ExecutionRequest(
+            config=MachineConfig(prompt="Add tests for billing", claude_code_oauth_token="..."),
+            tag="billing-tests",
+        ),
+    ]
+    batch = await executor.run_batch(requests)
+    print(f"{batch.succeeded}/{batch.total} succeeded")
+```
+
+## Primary API
+
+These are the stable, recommended entry points:
+
+- MachineConfig: Configuration dataclass for a flaude Fly.io machine. Required fields: claude_code_oauth_token, prompt. Optional: repos (list of URLs or RepoSpec), region (default "iad"), vm_size (default "performance-2x"), vm_cpus (default 2), vm_memory_mb (default 4096), image (default "ghcr.io/ravi-hq/flaude:latest"), env (dict), metadata (dict).
+
+- ensure_app(app_name, org, region, token): Get or create a Fly.io app. Idempotent. Returns FlyApp.
+
+- run_and_destroy(app_name, config, name, token, wait_timeout, raise_on_failure): Execute a prompt with automatic cleanup. Creates a machine, waits for exit, destroys the machine. Raises MachineExitError on non-zero exit (unless raise_on_failure=False). Returns RunResult.
+
+- run_with_logs(app_name, config, name, token, wait_timeout, item_timeout, total_timeout, collector, server, server_port, include_stderr): Launch execution and return a StreamingRun async iterator that yields log lines in real time. Use as async context manager for guaranteed cleanup.
+
+- RunResult: Frozen dataclass with machine_id (str), exit_code (int | None), state (str), destroyed (bool).
+
+- ConcurrentExecutor(app_name, token, max_concurrency, wait_timeout): Manager for concurrent machine launches. Call run_batch(requests) with a list of ExecutionRequest objects. Returns BatchResult.
+
+- ExecutionRequest: Frozen dataclass with config (MachineConfig), name (str | None), tag (str for result correlation).
+
+## Advanced API
+
+These are public but may change in 0.x releases:
+
+- FlyApp, create_app, get_app: Explicit Fly app management
+- FlyMachine, create_machine, destroy_machine, stop_machine, get_machine: Machine lifecycle
+- LogDrainServer, LogCollector, LogStream, LogEntry: Log drain infrastructure
+- StreamingRun: Combined async iterator + context manager for streaming executions
+- build_machine_config: Build the raw Fly Machines API payload from MachineConfig
+- RepoSpec: Repository spec with url, branch, target_dir fields
+- MachineExitError: Exception raised on non-zero exit, includes log tail
+- BatchResult, ExecutionResult: Batch execution results
+- docker_build, docker_push, docker_login_fly, ensure_image: Docker image management
+- extract_exit_code_from_logs, fetch_machine_logs: Log utilities
+
+## Architecture
+
+```
+Your code                    Fly.io
+-------                      ------
+MachineConfig --> create VM --> clone repos
+                                  |
+                              run Claude Code
+                                  |
+            <-- stream logs <-- stdout/stderr
+                                  |
+              destroy VM <---- exit
+```
+
+1. A Docker container with Claude Code, git, and gh CLI boots on Fly.io
+2. The entrypoint clones specified repos into /workspace
+3. Claude Code runs the prompt in print mode (-p)
+4. Logs stream back via HTTP log drains (NDJSON)
+5. The machine is always destroyed after completion (try/finally guarantee)
+
+## MachineConfig Fields
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| image | ghcr.io/ravi-hq/flaude:latest | Docker image |
+| claude_code_oauth_token | (required) | Claude Code auth token |
+| github_username | "" | GitHub username for private repos |
+| github_token | "" | GitHub PAT for private repos |
+| prompt | (required) | The Claude Code prompt to execute |
+| repos | [] | Repos to clone (URLs or RepoSpec objects) |
+| region | "iad" | Fly.io region |
+| vm_size | "performance-2x" | VM preset |
+| vm_cpus | 2 | vCPUs |
+| vm_memory_mb | 4096 | RAM in MB |
+| auto_destroy | True | Auto-destroy on exit |
+| env | {} | Additional environment variables |
+| metadata | {} | Machine metadata key-value pairs |
+
+## Error Handling
+
+- MachineExitError: Raised by run_and_destroy() on non-zero exit. Has machine_id, exit_code, state, and logs (last 20 lines) attributes.
+- FlyAPIError: Raised on Fly.io API errors (4xx/5xx). Has status_code, detail, method, url attributes.
+- ImageBuildError: Raised on Docker build/push failures. Has returncode and stderr attributes.
+- TimeoutError: Raised when machine doesn't exit within wait_timeout (default 3600s).
+
+## Links
+
+- Source: https://github.com/ravi-hq/flaude
+- Docs: https://ravi-hq.github.io/flaude
+- PyPI: https://pypi.org/project/flaude/
+- Issues: https://github.com/ravi-hq/flaude/issues

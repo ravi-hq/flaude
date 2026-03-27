@@ -172,7 +172,7 @@ async def main():
 
 | Field | Default | Description |
 |-------|---------|-------------|
-| `image` | `registry.fly.io/flaude:latest` | Docker image |
+| `image` | `ghcr.io/ravi-hq/flaude:latest` | Docker image |
 | `claude_code_oauth_token` | *(required)* | Claude Code auth token |
 | `github_username` | `""` | GitHub username for private repos |
 | `github_token` | `""` | GitHub PAT for private repos |
@@ -237,7 +237,7 @@ Optional:
 |---------|---------|
 | `FLAUDE_E2E_PRIVATE_REPO` | Full URL of a private repo to test cloning |
 
-The Docker image `registry.fly.io/flaude:latest` must be pushed before running E2E tests:
+The Docker image `ghcr.io/ravi-hq/flaude:latest` must be pushed before running E2E tests:
 
 ```bash
 source .env && python -c "
