@@ -50,6 +50,36 @@ Use the [bug report template](.github/ISSUE_TEMPLATE/bug_report.yml).
 
 Use the [feature request template](.github/ISSUE_TEMPLATE/feature_request.yml).
 
+## Releasing a new version
+
+> Maintainers only.
+
+### Via Claude Code
+
+Run `/release` — it walks through version bump, CHANGELOG update, commit, tag, and GitHub Release creation interactively.
+
+### Via terminal
+
+```bash
+make release
+```
+
+This runs `scripts/release.sh` which:
+1. Checks preconditions (clean tree, on main, up to date)
+2. Prompts for the new version number
+3. Updates `pyproject.toml` and opens `CHANGELOG.md` in `$EDITOR`
+4. Commits, tags, pushes, and creates a GitHub Release
+
+The GitHub Release triggers CI to:
+- Publish to [PyPI](https://pypi.org/project/flaude/) via OIDC trusted publishing
+- Build and push Docker image to `ghcr.io/ravi-hq/flaude`
+
+### Version policy
+
+- Versions follow [Semantic Versioning](https://semver.org/)
+- Version source of truth: `version` field in `pyproject.toml`
+- CHANGELOG follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
+
 ## Code style
 
 - Black-compatible formatting enforced by `ruff format`.

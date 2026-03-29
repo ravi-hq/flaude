@@ -44,3 +44,9 @@ Loaded on-demand — not preloaded.
 wonder, reflect, advocate, contrarian, judge
 **Support**: hacker, simplifier, researcher, architect
 <!-- ooo:END -->
+
+## Project Skills
+
+| Command | Description |
+|---------|-------------|
+| `/release` | Release a new version (bump version, changelog, tag, publish) |
