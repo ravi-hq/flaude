@@ -297,6 +297,71 @@ class TestMachineConfigTokenInjection:
 
 
 # ---------------------------------------------------------------------------
+# Output format configuration
+# ---------------------------------------------------------------------------
+
+
+class TestOutputFormat:
+    """Claude Code output format is configurable via FLAUDE_OUTPUT_FORMAT."""
+
+    def test_output_format_passed_when_set(self, startup_env: dict) -> None:
+        """--output-format and value appear in argv when env var is set."""
+        _run_entrypoint(startup_env, extra_env={"FLAUDE_OUTPUT_FORMAT": "stream-json"})
+        argv_lines = startup_env["argv_file"].read_text().splitlines()
+        assert "--output-format" in argv_lines
+        assert "stream-json" in argv_lines
+
+    def test_verbose_added_for_stream_json(self, startup_env: dict) -> None:
+        """--verbose is added automatically when stream-json is requested."""
+        _run_entrypoint(startup_env, extra_env={"FLAUDE_OUTPUT_FORMAT": "stream-json"})
+        argv_lines = startup_env["argv_file"].read_text().splitlines()
+        assert "--verbose" in argv_lines
+
+    def test_verbose_not_added_for_json_format(self, startup_env: dict) -> None:
+        """--verbose is NOT added for non-stream-json formats."""
+        _run_entrypoint(startup_env, extra_env={"FLAUDE_OUTPUT_FORMAT": "json"})
+        argv_lines = startup_env["argv_file"].read_text().splitlines()
+        assert "--output-format" in argv_lines
+        assert "json" in argv_lines
+        assert "--verbose" not in argv_lines
+
+    def test_no_output_format_when_unset(self, startup_env: dict) -> None:
+        """No --output-format flag when env var is not set."""
+        _run_entrypoint(startup_env)
+        argv_lines = startup_env["argv_file"].read_text().splitlines()
+        assert "--output-format" not in argv_lines
+
+    def test_output_format_before_separator(self, startup_env: dict) -> None:
+        """Output format flags appear before the -- separator."""
+        _run_entrypoint(startup_env, extra_env={"FLAUDE_OUTPUT_FORMAT": "stream-json"})
+        argv_lines = startup_env["argv_file"].read_text().splitlines()
+        idx_fmt = argv_lines.index("--output-format")
+        idx_sep = argv_lines.index("--")
+        assert idx_fmt < idx_sep
+
+
+class TestMachineConfigOutputFormat:
+    """MachineConfig.output_format is injected as FLAUDE_OUTPUT_FORMAT."""
+
+    def test_output_format_in_payload_env(self) -> None:
+        config = MachineConfig(
+            claude_code_oauth_token="token",
+            prompt="test",
+            output_format="stream-json",
+        )
+        payload = build_machine_config(config)
+        assert payload["config"]["env"]["FLAUDE_OUTPUT_FORMAT"] == "stream-json"
+
+    def test_no_output_format_env_when_empty(self) -> None:
+        config = MachineConfig(
+            claude_code_oauth_token="token",
+            prompt="test",
+        )
+        payload = build_machine_config(config)
+        assert "FLAUDE_OUTPUT_FORMAT" not in payload["config"]["env"]
+
+
+# ---------------------------------------------------------------------------
 # Entrypoint startup sequence
 # ---------------------------------------------------------------------------
 

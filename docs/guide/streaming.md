@@ -124,6 +124,44 @@ if result.exit_code != 0:
     A machine that reaches the `failed` state (OOM kill, entrypoint crash) may have
     `exit_code=None`.
 
+## Structured JSON output
+
+By default, Claude Code outputs human-readable text. Set `output_format="stream-json"` to
+receive structured NDJSON events instead — each line is a self-contained JSON object with a
+`type` field:
+
+| Type | Description |
+|------|-------------|
+| `system` | Session init, hook events |
+| `assistant` | Complete assistant message with content blocks |
+| `result` | Final result with `total_cost_usd`, `usage`, `duration_ms` |
+
+```python
+config = MachineConfig(
+    claude_code_oauth_token="sk-ant-oat-...",
+    prompt="Refactor the auth module",
+    repos=["https://github.com/your-org/your-repo"],
+    output_format="stream-json",
+)
+
+async with await run_with_logs(app_name, config) as stream:
+    async for line in stream:
+        import json
+        event = json.loads(line)
+        if event.get("type") == "result":
+            print(f"Cost: ${event['total_cost_usd']:.4f}")
+        elif event.get("type") == "assistant":
+            print(event["message"]["content"])
+```
+
+Each line in the stream is a JSON string. The log pipeline does not parse it — callers
+are responsible for `json.loads()` on each line.
+
+!!! note
+    Lines from `entrypoint.sh` (like `[flaude] Starting execution` and `[flaude:exit:0]`)
+    are plain text, not JSON. A robust consumer should handle `json.JSONDecodeError` for
+    these lines.
+
 ## API reference
 
 See [LogStream](../api/log-infrastructure.md) and [StreamingRun](../api/execution.md) for the full

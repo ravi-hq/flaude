@@ -99,6 +99,7 @@ class MachineConfig:
     auto_destroy: bool = DEFAULT_AUTO_DESTROY
     env: dict[str, str] = field(default_factory=dict)
     metadata: dict[str, str] = field(default_factory=dict)
+    output_format: str = ""
 
 
 def build_machine_config(config: MachineConfig) -> dict[str, Any]:
@@ -134,6 +135,9 @@ def build_machine_config(config: MachineConfig) -> dict[str, Any]:
     if config.repos:
         normalised = _normalise_repos(config.repos)
         env_vars["FLAUDE_REPOS"] = _serialise_repos(normalised)
+
+    if config.output_format:
+        env_vars["FLAUDE_OUTPUT_FORMAT"] = config.output_format
 
     # Merge user-supplied env vars (they can override defaults if needed)
     env_vars.update(config.env)

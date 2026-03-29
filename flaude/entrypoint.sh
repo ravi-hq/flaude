@@ -115,12 +115,22 @@ echo "[flaude] Running Claude Code in $WORKSPACE ..."
 
 cd "$WORKSPACE"
 
+# Build optional output format arguments
+output_fmt_args=()
+if [ -n "${FLAUDE_OUTPUT_FORMAT:-}" ]; then
+    output_fmt_args+=(--output-format "$FLAUDE_OUTPUT_FORMAT")
+    # stream-json requires --verbose
+    if [ "$FLAUDE_OUTPUT_FORMAT" = "stream-json" ]; then
+        output_fmt_args+=(--verbose)
+    fi
+fi
+
 # Run Claude Code in non-interactive/print mode with the prompt.
 # -p (--print) sends prompt as a one-shot and streams output to stdout.
 # Use -- to prevent prompts starting with "-" from being parsed as flags.
 # Temporarily disable set -e so we can capture the exit code and log it.
 set +e
-claude -p -- "$FLAUDE_PROMPT"
+claude -p "${output_fmt_args[@]}" -- "$FLAUDE_PROMPT"
 EXIT_CODE=$?
 set -e
 

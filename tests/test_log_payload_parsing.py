@@ -417,6 +417,52 @@ class TestSystemMessageFiltering:
 # ---------------------------------------------------------------------------
 
 
+class TestStreamJsonPassthrough:
+    """Verify that Claude's stream-json output passes through the log pipeline."""
+
+    def test_json_string_message_extracted_as_is(self) -> None:
+        """When Claude outputs stream-json, each line is a JSON string.
+        Fly wraps it as a string in the message field — verify it passes through."""
+        claude_json = '{"type":"assistant","message":{"content":[{"type":"text","text":"Hello"}]}}'
+        raw = _fly_stdout("m-1", claude_json)
+        entry = parse_log_entry(raw)
+        assert entry is not None
+        assert entry.message == claude_json
+
+    def test_result_event_passes_through(self) -> None:
+        """The result event with cost/usage data passes through unchanged."""
+        result_json = '{"type":"result","subtype":"success","total_cost_usd":0.003,"result":"Done"}'
+        raw = _fly_stdout("m-1", result_json)
+        entry = parse_log_entry(raw)
+        assert entry is not None
+        assert entry.message == result_json
+
+    def test_exit_marker_found_among_json_lines(self) -> None:
+        """extract_exit_code_from_logs finds the marker even when preceding
+        lines are JSON strings from stream-json output."""
+        from flaude.runner import extract_exit_code_from_logs
+
+        logs = [
+            '{"type":"system","subtype":"init","session_id":"abc"}',
+            '{"type":"assistant","message":{"content":[{"type":"text","text":"Done"}]}}',
+            '{"type":"result","subtype":"success","result":"Done"}',
+            "[flaude] Claude Code exited with code 0",
+            "[flaude:exit:0]",
+        ]
+        assert extract_exit_code_from_logs(logs) == 0
+
+    def test_exit_marker_nonzero_among_json_lines(self) -> None:
+        """Non-zero exit codes are correctly extracted from mixed logs."""
+        from flaude.runner import extract_exit_code_from_logs
+
+        logs = [
+            '{"type":"result","subtype":"error","is_error":true}',
+            "[flaude] Claude Code exited with code 1",
+            "[flaude:exit:1]",
+        ]
+        assert extract_exit_code_from_logs(logs) == 1
+
+
 class TestParseNdjsonEdgeCases:
     def test_windows_line_endings(self) -> None:
         """CRLF line endings are handled correctly."""

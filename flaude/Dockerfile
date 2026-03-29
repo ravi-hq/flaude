@@ -41,5 +41,6 @@ RUN chmod +x /usr/local/bin/entrypoint.sh
 #   GITHUB_TOKEN             — for git clone auth
 #   FLAUDE_REPOS             — JSON array of repo URLs to clone
 #   FLAUDE_PROMPT            — the prompt string to pass to Claude Code
+#   FLAUDE_OUTPUT_FORMAT     — output format: "stream-json", "json", or omit for text
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
