@@ -18,4 +18,8 @@ Low-level Fly.io app and machine lifecycle operations.
 
 ::: flaude.machine.destroy_machine
 
+::: flaude.machine.start_machine
+
+::: flaude.machine.update_machine
+
 ::: flaude.machine.FlyMachine

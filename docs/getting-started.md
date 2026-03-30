@@ -151,6 +151,7 @@ asyncio.run(run_claude(
 
 ## Next steps
 
+- [Multi-Turn Sessions](guide/sessions.md) — persistent conversations across prompts
 - [Streaming Logs](guide/streaming.md) — watch Claude Code output in real time
 - [Concurrent Execution](guide/concurrent.md) — run many prompts in parallel
 - [Error Handling](guide/error-handling.md) — handle failures gracefully

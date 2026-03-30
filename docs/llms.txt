@@ -94,6 +94,14 @@ These are the stable, recommended entry points:
 
 - RunResult: Frozen dataclass with machine_id (str), exit_code (int | None), state (str), destroyed (bool).
 
+- Session: Frozen dataclass representing a persistent multi-turn Claude Code session on Fly.io. Fields: session_id (UUID str), machine_id (str), volume_id (str), app_name (str), region (str), created_at (ISO 8601 str), ttl_seconds (int, 0=no TTL). Property: expired (bool, checks if TTL exceeded).
+
+- create_session(app_name, config, name, volume_size_gb, ttl_seconds, token): Create a new session. Creates a Fly Volume + machine with volume mounted at /data. Runs the first prompt with --session-id. Machine is stopped (not destroyed) after the first turn. Returns tuple of (Session, RunResult).
+
+- run_session_turn(app_name, machine_id, config, token, wait_timeout, raise_on_failure): Execute a single turn of a session on an existing stopped machine. Updates machine config (new prompt), starts it, waits for exit, leaves it stopped. Returns RunResult with destroyed=False. Raises MachineExitError on non-zero exit unless raise_on_failure=False.
+
+- destroy_session(app_name, session, token): Destroy a session — destroys both the machine and the volume.
+
 - ConcurrentExecutor(app_name, token, max_concurrency, wait_timeout): Manager for concurrent machine launches. Call run_batch(requests) with a list of ExecutionRequest objects. Returns BatchResult.
 
 - ExecutionRequest: Frozen dataclass with config (MachineConfig), name (str | None), tag (str for result correlation).
@@ -103,7 +111,8 @@ These are the stable, recommended entry points:
 These are public but may change in 0.x releases:
 
 - FlyApp, create_app, get_app: Explicit Fly app management
-- FlyMachine, create_machine, destroy_machine, stop_machine, get_machine: Machine lifecycle
+- FlyVolume, create_volume, destroy_volume, list_volumes: Fly volume lifecycle for session persistence. FlyVolume is a frozen dataclass with id, name, region, size_gb, app_name, state.
+- FlyMachine, create_machine, destroy_machine, stop_machine, start_machine, update_machine, get_machine: Machine lifecycle. start_machine starts a stopped machine (best-effort, suppresses 404/409). update_machine sends PUT with new config to a stopped machine (used to inject new prompt between session turns).
 - LogDrainServer, LogCollector, LogStream, LogEntry: Log drain infrastructure
 - StreamingRun: Combined async iterator + context manager for streaming executions
 - build_machine_config: Build the raw Fly Machines API payload from MachineConfig
@@ -114,6 +123,8 @@ These are public but may change in 0.x releases:
 - extract_exit_code_from_logs, fetch_machine_logs: Log utilities
 
 ## Architecture
+
+### Ephemeral (one-shot) mode
 
 ```
 Your code                    Fly.io
@@ -133,6 +144,32 @@ MachineConfig --> create VM --> clone repos
 4. Logs stream back via HTTP log drains (NDJSON)
 5. The machine is always destroyed after completion (try/finally guarantee)
 
+### Session (multi-turn) mode
+
+```
+Turn 1: create_session()    --> create volume + machine
+                                  |
+                              clone repos, run prompt with --session-id
+                                  |
+                              stop machine (volume persists at /data)
+                                  |
+                           <-- Session + RunResult
+
+Turn N: run_session_turn()  --> update config (new prompt)
+                                  |
+                              start machine
+                                  |
+                              skip clone, --resume session
+                                  |
+                              stop machine
+                                  |
+                           <-- RunResult
+
+Cleanup: destroy_session()  --> destroy machine + volume
+```
+
+Sessions persist the workspace and Claude Code conversation state on a Fly Volume mounted at /data. The machine is stopped (not destroyed) between turns. CLAUDE_CONFIG_DIR points to /data/claude so session transcripts survive restarts.
+
 ## MachineConfig Fields
 
 | Field | Default | Description |
@@ -150,6 +187,10 @@ MachineConfig --> create VM --> clone repos
 | auto_destroy | True | Auto-destroy on exit |
 | env | {} | Additional environment variables |
 | metadata | {} | Machine metadata key-value pairs |
+| output_format | "" | Output format ("stream-json" for structured NDJSON) |
+| volume_id | "" | Fly volume ID for session persistence |
+| volume_mount_path | "/data" | Volume mount path inside the container |
+| session_id | "" | UUID for Claude Code session continuity |
 
 ## Error Handling
 

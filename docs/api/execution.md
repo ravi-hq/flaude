@@ -14,4 +14,6 @@ Core functions for running Claude Code prompts on Fly.io machines.
 
 ::: flaude.runner.wait_for_machine_exit
 
+::: flaude.runner.run_session_turn
+
 ::: flaude.runner.extract_exit_code_from_logs

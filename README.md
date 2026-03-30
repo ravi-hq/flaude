@@ -8,7 +8,7 @@
 
 On-demand Claude Code execution on [Fly.io](https://fly.io) machines.
 
-Spin up ephemeral VMs, run Claude Code prompts against your repos, stream the output back, and auto-destroy the machines when done. No persistent infrastructure required.
+Spin up VMs, run Claude Code prompts against your repos, stream the output back, and auto-destroy the machines when done. Or use **persistent sessions** for multi-turn conversations where Claude Code remembers the full context between prompts.
 
 ## How it works
 
@@ -113,6 +113,35 @@ async def main():
     print(f"{batch.succeeded}/{batch.total} succeeded")
 ```
 
+### Multi-turn sessions
+
+```python
+from flaude import MachineConfig, create_session, run_session_turn, destroy_session
+
+async def main():
+    config = MachineConfig(
+        claude_code_oauth_token="sk-ant-oat-...",
+        prompt="Review src/ for security issues and list them.",
+        repos=["https://github.com/you/your-repo"],
+    )
+
+    # First turn — creates a persistent session
+    session, result = await create_session("my-flaude-app", config)
+    print(f"Session: {session.session_id}, exit: {result.exit_code}")
+
+    # Second turn — Claude remembers the first conversation
+    config2 = MachineConfig(
+        claude_code_oauth_token="sk-ant-oat-...",
+        prompt="Fix the top 3 security issues you found.",
+    )
+    result2 = await run_session_turn(
+        session.app_name, session.machine_id, config2
+    )
+
+    # Cleanup
+    await destroy_session(session.app_name, session)
+```
+
 ## API overview
 
 ### Configuration
@@ -131,6 +160,15 @@ async def main():
 | `run_with_logs()` | Run with real-time log streaming via async iterator. |
 | `ConcurrentExecutor` | Run multiple prompts in parallel with optional concurrency limits. |
 
+### Sessions
+
+| Function / Class | Purpose |
+|------------------|---------|
+| `create_session()` | Create a persistent session (volume + machine + first prompt). |
+| `run_session_turn()` | Run a follow-up prompt on an existing session. |
+| `destroy_session()` | Destroy session (machine + volume). |
+| `Session` | Dataclass tracking session state across turns. |
+
 ### App & machine management
 
 | Function | Purpose |
@@ -139,6 +177,15 @@ async def main():
 | `create_app()` / `get_app()` | Explicit app create/get |
 | `create_machine()` | Create a Fly machine from config |
 | `stop_machine()` / `destroy_machine()` | Machine lifecycle control |
+| `start_machine()` / `update_machine()` | Start stopped machines, update config |
+
+### Volume management
+
+| Function / Class | Purpose |
+|------------------|---------|
+| `FlyVolume` | Volume metadata dataclass |
+| `create_volume()` | Create a Fly volume for session persistence |
+| `list_volumes()` / `destroy_volume()` | List or destroy volumes |
 
 ### Log infrastructure
 
@@ -183,6 +230,10 @@ async def main():
 | `vm_cpus` | `2` | vCPUs |
 | `vm_memory_mb` | `4096` | RAM in MB |
 | `auto_destroy` | `True` | Auto-destroy on exit |
+| `output_format` | `""` | Output format (`"stream-json"` for structured NDJSON) |
+| `volume_id` | `""` | Fly volume ID for session persistence |
+| `volume_mount_path` | `"/data"` | Volume mount path inside the container |
+| `session_id` | `""` | UUID for Claude Code session continuity |
 | `env` | `{}` | Additional environment variables |
 | `metadata` | `{}` | Machine metadata key-value pairs |
 
@@ -203,6 +254,8 @@ Set automatically on the machine by flaude:
 | `GITHUB_TOKEN` | Git credential for repo cloning |
 | `FLAUDE_REPOS` | JSON array of repo specs |
 | `FLAUDE_PROMPT` | The prompt string |
+| `FLAUDE_SESSION_ID` | Session UUID (when using sessions) |
+| `CLAUDE_CONFIG_DIR` | Claude Code config dir on volume (when using sessions) |
 
 ## Development
 

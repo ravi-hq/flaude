@@ -66,6 +66,7 @@ nav:
   - Overview: overview.md
   - Getting Started: getting-started.md
   - Guides:
+    - Multi-Turn Sessions: guide/sessions.md
     - Streaming Logs: guide/streaming.md
     - Concurrent Execution: guide/concurrent.md
     - Error Handling: guide/error-handling.md
@@ -78,6 +79,8 @@ nav:
   - API Reference:
     - Configuration: api/configuration.md
     - Execution: api/execution.md
+    - Sessions: api/sessions.md
+    - Volumes: api/volumes.md
     - Concurrent: api/concurrent.md
     - App & Machine: api/app-machine.md
     - Log Infrastructure: api/log-infrastructure.md

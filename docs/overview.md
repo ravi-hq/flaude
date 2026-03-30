@@ -19,6 +19,7 @@ flaude packages all of that into `pip install flaude` and a few lines of Python.
 
 - **`run_and_destroy()`** — fire-and-forget prompt execution. Create a VM, run Claude Code, get the result, destroy the VM. One function call.
 - **`run_with_logs()`** — same thing, but with real-time log streaming via async iteration. Watch Claude Code think while it works.
+- **`create_session()` / `run_session_turn()`** — persistent multi-turn conversations. The machine stops between prompts instead of being destroyed, preserving the full conversation and workspace on a Fly Volume.
 - **`ConcurrentExecutor`** — run many prompts in parallel with configurable concurrency limits. Get back a `BatchResult` with per-request outcomes.
 - **Guaranteed cleanup** — machines are always destroyed via `try/finally`, even on exceptions, cancellation, or timeouts.
 - **Single dependency** — just [httpx](https://www.python-httpx.org/). The log drain server uses stdlib asyncio. No ASGI frameworks, no extra event loops.
@@ -30,6 +31,8 @@ flaude is a primitive. It's the foundation layer that handles the infrastructure
 **CI integration** — a test fails, flaude spins up Claude Code to analyze the failure and propose a fix. Or run Claude Code against every PR for automated code review. There's a [GitHub Actions example](guide/building-on-flaude.md#ci-integration-github-actions) in the guides.
 
 **Batch processing** — run the same prompt against dozens or hundreds of repos. Migrate a codebase to a new pattern. Add type annotations to every file. Audit security across your org.
+
+**Interactive agents** — use sessions to build agents that have multi-turn conversations with Claude Code. Ask it to analyze a codebase, then follow up with fixes, then verify — all in one persistent session with full context retention.
 
 **Multi-agent orchestration** — spin up N machines that each work on a different part of a codebase, then combine the results. Divide and conquer at the infrastructure level.
 
@@ -62,6 +65,7 @@ For a deeper look at the internals, see [Architecture](concepts/architecture.md)
 ## Next steps
 
 - [Getting Started](getting-started.md) — prerequisites and your first run
+- [Multi-Turn Sessions](guide/sessions.md) — persistent conversations across prompts
 - [Streaming Logs](guide/streaming.md) — watch Claude Code output in real time
 - [Concurrent Execution](guide/concurrent.md) — run many prompts at once
 - [Building on flaude](guide/building-on-flaude.md) — CI integration, shared log drains, and more
