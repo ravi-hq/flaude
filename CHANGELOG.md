@@ -7,6 +7,12 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-03-30
+
+### Fixed
+- Multi-turn sessions losing all conversation context from the first turn — working directory path mismatch caused `--resume` to never fire on turn 2+
+- Persist effective CWD to `/data/.flaude_cwd` after first turn, restore on resume
+
 ## [0.3.0] - 2026-03-30
 
 ### Added
@@ -50,7 +56,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - Support for cloning multiple repos into `/workspace`
 - Concurrent execution support
 
-[Unreleased]: https://github.com/ravi-hq/flaude/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/ravi-hq/flaude/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/ravi-hq/flaude/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/ravi-hq/flaude/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/ravi-hq/flaude/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/ravi-hq/flaude/releases/tag/v0.1.0
