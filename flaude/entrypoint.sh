@@ -115,6 +115,11 @@ clone_repos() {
 # Run repo cloning (skip if workspace already has content — session resume)
 if [ -n "$(ls -A "$WORKSPACE" 2>/dev/null)" ]; then
     echo "[flaude] Workspace already populated, skipping clone (session resume)"
+    # Restore the effective working directory from turn 1
+    if [ -f /data/.flaude_cwd ]; then
+        WORKSPACE="$(cat /data/.flaude_cwd)"
+        echo "[flaude] Restored working directory: $WORKSPACE"
+    fi
 else
     clone_repos
 fi
@@ -128,6 +133,14 @@ fi
 echo "[flaude] Running Claude Code in $WORKSPACE ..."
 
 cd "$WORKSPACE"
+
+# Persist effective CWD so subsequent turns use the same path.
+# This is critical because clone_repos may modify WORKSPACE (e.g.,
+# appending repo name for single-repo clones), but on resume turns
+# clone_repos is skipped and WORKSPACE stays at the base path.
+if [ -n "${FLAUDE_SESSION_ID:-}" ]; then
+    echo "$PWD" > /data/.flaude_cwd
+fi
 
 # Build optional output format arguments
 output_fmt_args=()
