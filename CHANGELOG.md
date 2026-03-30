@@ -7,6 +7,19 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-03-30
+
+### Added
+- Persistent multi-turn serverless sessions (`create_session`, `run_session_turn`, `destroy_session`)
+- `Session` dataclass tracking machine + volume pairs across conversation turns
+- `FlyVolume` model and volume CRUD (`create_volume`, `list_volumes`, `destroy_volume`)
+- `start_machine()` and `update_machine()` for session machine lifecycle
+- `fly_put()` HTTP method in Fly client
+- Session-aware entrypoint with `--resume`/`--session-id` flag support
+- `FLAUDE_SESSION_ID` and `CLAUDE_CONFIG_DIR` env var support for persistent conversations
+- Volume mount support in `MachineConfig` (`volume_id`, `volume_mount_path`, `session_id`)
+- Conditional repo cloning (skip on session resume when workspace is populated)
+
 ## [0.2.0] - 2026-03-28
 
 ### Added
@@ -37,6 +50,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - Support for cloning multiple repos into `/workspace`
 - Concurrent execution support
 
-[Unreleased]: https://github.com/ravi-hq/flaude/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/ravi-hq/flaude/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/ravi-hq/flaude/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/ravi-hq/flaude/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/ravi-hq/flaude/releases/tag/v0.1.0
