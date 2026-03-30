@@ -17,6 +17,7 @@ from flaude.runner import (
     _extract_exit_code,
     run,
     run_and_destroy,
+    run_session_turn,
     wait_for_machine_exit,
 )
 
@@ -609,3 +610,136 @@ async def test_run_and_destroy_still_cleans_up_on_exit_error() -> None:
     # Cleanup happened before MachineExitError was raised
     assert stop_route.called
     assert destroy_route.called
+
+
+# ---------------------------------------------------------------------------
+# run_session_turn — update + start + wait, no destroy
+# ---------------------------------------------------------------------------
+
+
+@respx.mock
+async def test_run_session_turn_success() -> None:
+    """run_session_turn updates config, starts machine, waits, returns result."""
+    respx.put(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}").mock(
+        return_value=httpx.Response(200, json=_machine_response())
+    )
+    respx.post(
+        f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/start"
+    ).mock(return_value=httpx.Response(200, json={}))
+    respx.get(
+        f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/wait?state=stopped"
+    ).mock(return_value=httpx.Response(200, json={}))
+    respx.get(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}").mock(
+        return_value=httpx.Response(200, json=_machine_stopped_response(0))
+    )
+
+    result = await run_session_turn(
+        APP, MACHINE_ID, _machine_config(), token=TOKEN
+    )
+
+    assert result.machine_id == MACHINE_ID
+    assert result.exit_code == 0
+    assert result.state == "stopped"
+    assert result.destroyed is False
+
+
+@respx.mock
+async def test_run_session_turn_does_not_destroy_machine() -> None:
+    """run_session_turn never calls the destroy endpoint."""
+    respx.put(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}").mock(
+        return_value=httpx.Response(200, json=_machine_response())
+    )
+    respx.post(
+        f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/start"
+    ).mock(return_value=httpx.Response(200, json={}))
+    respx.get(
+        f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/wait?state=stopped"
+    ).mock(return_value=httpx.Response(200, json={}))
+    respx.get(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}").mock(
+        return_value=httpx.Response(200, json=_machine_stopped_response(0))
+    )
+    destroy_route = respx.delete(
+        f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}?force=true"
+    ).mock(return_value=httpx.Response(200, json={}))
+
+    await run_session_turn(APP, MACHINE_ID, _machine_config(), token=TOKEN)
+
+    assert not destroy_route.called
+
+
+@respx.mock
+async def test_run_session_turn_raises_on_nonzero_exit() -> None:
+    """run_session_turn raises MachineExitError when exit code is non-zero."""
+    respx.put(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}").mock(
+        return_value=httpx.Response(200, json=_machine_response())
+    )
+    respx.post(
+        f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/start"
+    ).mock(return_value=httpx.Response(200, json={}))
+    respx.get(
+        f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/wait?state=stopped"
+    ).mock(return_value=httpx.Response(200, json={}))
+    respx.get(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}").mock(
+        return_value=httpx.Response(200, json=_machine_stopped_response(1))
+    )
+
+    with pytest.raises(MachineExitError) as exc_info:
+        await run_session_turn(APP, MACHINE_ID, _machine_config(), token=TOKEN)
+
+    assert exc_info.value.exit_code == 1
+    assert exc_info.value.machine_id == MACHINE_ID
+
+
+@respx.mock
+async def test_run_session_turn_no_raise_when_disabled() -> None:
+    """run_session_turn returns result without raising when raise_on_failure=False."""
+    respx.put(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}").mock(
+        return_value=httpx.Response(200, json=_machine_response())
+    )
+    respx.post(
+        f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/start"
+    ).mock(return_value=httpx.Response(200, json={}))
+    respx.get(
+        f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/wait?state=stopped"
+    ).mock(return_value=httpx.Response(200, json={}))
+    respx.get(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}").mock(
+        return_value=httpx.Response(200, json=_machine_stopped_response(2))
+    )
+
+    result = await run_session_turn(
+        APP, MACHINE_ID, _machine_config(), token=TOKEN, raise_on_failure=False
+    )
+
+    assert result.exit_code == 2
+    assert result.destroyed is False
+
+
+@respx.mock
+async def test_run_session_turn_raises_on_failed_state() -> None:
+    """run_session_turn raises MachineExitError when machine reaches 'failed' state."""
+    failed_response = {
+        "id": MACHINE_ID,
+        "name": "test-machine",
+        "state": "failed",
+        "region": "iad",
+        "instance_id": "inst_001",
+        "events": [],
+    }
+
+    respx.put(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}").mock(
+        return_value=httpx.Response(200, json=_machine_response())
+    )
+    respx.post(
+        f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/start"
+    ).mock(return_value=httpx.Response(200, json={}))
+    respx.get(
+        f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}/wait?state=stopped"
+    ).mock(return_value=httpx.Response(500, text="nope"))
+    respx.get(f"{FLY_API_BASE}/apps/{APP}/machines/{MACHINE_ID}").mock(
+        return_value=httpx.Response(200, json=failed_response)
+    )
+
+    with pytest.raises(MachineExitError) as exc_info:
+        await run_session_turn(APP, MACHINE_ID, _machine_config(), token=TOKEN)
+
+    assert exc_info.value.state == "failed"

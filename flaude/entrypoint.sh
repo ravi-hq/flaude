@@ -5,7 +5,17 @@ set -euo pipefail
 # flaude entrypoint: clone repos, run Claude Code, signal completion
 # ------------------------------------------------------------------
 
-WORKSPACE="${WORKSPACE:-/workspace}"
+# Session mode: workspace lives on the persistent volume at /data/workspace.
+# One-shot mode: workspace is ephemeral at /workspace.
+if [ -n "${FLAUDE_SESSION_ID:-}" ]; then
+    WORKSPACE="${WORKSPACE:-/data/workspace}"
+    export CLAUDE_CONFIG_DIR="${CLAUDE_CONFIG_DIR:-/data/claude}"
+    mkdir -p "$CLAUDE_CONFIG_DIR" "$WORKSPACE"
+    echo "[flaude] Session mode: session_id=$FLAUDE_SESSION_ID"
+    echo "[flaude:session:$FLAUDE_SESSION_ID]"
+else
+    WORKSPACE="${WORKSPACE:-/workspace}"
+fi
 
 echo "[flaude] Starting execution"
 
@@ -102,8 +112,12 @@ clone_repos() {
     return 0
 }
 
-# Run repo cloning
-clone_repos
+# Run repo cloning (skip if workspace already has content — session resume)
+if [ -n "$(ls -A "$WORKSPACE" 2>/dev/null)" ]; then
+    echo "[flaude] Workspace already populated, skipping clone (session resume)"
+else
+    clone_repos
+fi
 
 # --- Run Claude Code ---
 if [ -z "${FLAUDE_PROMPT:-}" ]; then
@@ -129,8 +143,23 @@ fi
 # -p (--print) sends prompt as a one-shot and streams output to stdout.
 # Use -- to prevent prompts starting with "-" from being parsed as flags.
 # Temporarily disable set -e so we can capture the exit code and log it.
+# Build session arguments
+session_args=()
+if [ -n "${FLAUDE_SESSION_ID:-}" ]; then
+    # Check if this is a resume (session transcript exists) or first turn
+    encoded_cwd=$(echo "$PWD" | sed 's|[^a-zA-Z0-9]|-|g')
+    session_file="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects/${encoded_cwd}/${FLAUDE_SESSION_ID}.jsonl"
+    if [ -f "$session_file" ]; then
+        session_args+=(--resume "$FLAUDE_SESSION_ID")
+        echo "[flaude] Resuming session $FLAUDE_SESSION_ID"
+    else
+        session_args+=(--session-id "$FLAUDE_SESSION_ID")
+        echo "[flaude] Starting new session $FLAUDE_SESSION_ID"
+    fi
+fi
+
 set +e
-claude -p "${output_fmt_args[@]}" -- "$FLAUDE_PROMPT"
+claude -p "${output_fmt_args[@]}" "${session_args[@]}" -- "$FLAUDE_PROMPT"
 EXIT_CODE=$?
 set -e
 

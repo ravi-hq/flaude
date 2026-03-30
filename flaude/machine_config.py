@@ -100,6 +100,10 @@ class MachineConfig:
     env: dict[str, str] = field(default_factory=dict)
     metadata: dict[str, str] = field(default_factory=dict)
     output_format: str = ""
+    # Session support
+    volume_id: str = ""
+    volume_mount_path: str = "/data"
+    session_id: str = ""
 
 
 def build_machine_config(config: MachineConfig) -> dict[str, Any]:
@@ -139,6 +143,10 @@ def build_machine_config(config: MachineConfig) -> dict[str, Any]:
     if config.output_format:
         env_vars["FLAUDE_OUTPUT_FORMAT"] = config.output_format
 
+    if config.session_id:
+        env_vars["FLAUDE_SESSION_ID"] = config.session_id
+        env_vars["CLAUDE_CONFIG_DIR"] = f"{config.volume_mount_path}/claude"
+
     # Merge user-supplied env vars (they can override defaults if needed)
     env_vars.update(config.env)
 
@@ -147,6 +155,9 @@ def build_machine_config(config: MachineConfig) -> dict[str, Any]:
         "managed_by": "flaude",
     }
     metadata.update(config.metadata)
+
+    if config.session_id:
+        metadata["session_id"] = config.session_id
 
     payload: dict[str, Any] = {
         "region": config.region,
@@ -165,5 +176,14 @@ def build_machine_config(config: MachineConfig) -> dict[str, Any]:
             "metadata": metadata,
         },
     }
+
+    # Add volume mount for session persistence
+    if config.volume_id:
+        payload["config"]["mounts"] = [
+            {
+                "volume": config.volume_id,
+                "path": config.volume_mount_path,
+            }
+        ]
 
     return payload

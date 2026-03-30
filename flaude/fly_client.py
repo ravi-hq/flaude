@@ -88,6 +88,10 @@ async def fly_delete(path: str, **kwargs: Any) -> Any:
     return await fly_request("DELETE", path, **kwargs)
 
 
+async def fly_put(path: str, **kwargs: Any) -> Any:
+    return await fly_request("PUT", path, **kwargs)
+
+
 async def fetch_machine_logs(
     app_name: str,
     machine_id: str,

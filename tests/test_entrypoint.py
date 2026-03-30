@@ -379,3 +379,166 @@ class TestRepoNameDerivation:
         log = _read_log(mock_env)
         clone_lines = [line for line in log if "git clone" in line]
         assert "custom-name" in clone_lines[0]
+
+
+# ---------------------------------------------------------------------------
+# Session mode
+# ---------------------------------------------------------------------------
+
+
+class TestSessionMode:
+    """Tests for FLAUDE_SESSION_ID session mode."""
+
+    def test_session_mode_uses_volume_workspace(self, mock_env: dict[str, Any]) -> None:
+        """When FLAUDE_SESSION_ID is set, workspace defaults to /data/workspace."""
+        data_workspace = mock_env["tmp_path"] / "data" / "workspace"
+        data_workspace.mkdir(parents=True)
+        data_claude = mock_env["tmp_path"] / "data" / "claude"
+        data_claude.mkdir(parents=True)
+
+        result = _run_entrypoint(
+            mock_env,
+            {
+                "FLAUDE_SESSION_ID": "ses-abc123",
+                "WORKSPACE": str(data_workspace),
+                "CLAUDE_CONFIG_DIR": str(data_claude),
+            },
+        )
+        assert "[flaude] Session mode: session_id=ses-abc123" in result.stdout
+        assert "[flaude:session:ses-abc123]" in result.stdout
+
+    def test_session_mode_emits_session_marker(self, mock_env: dict[str, Any]) -> None:
+        """Session mode emits the [flaude:session:<id>] marker line."""
+        data_workspace = mock_env["tmp_path"] / "data" / "workspace"
+        data_workspace.mkdir(parents=True)
+        data_claude = mock_env["tmp_path"] / "data" / "claude"
+        data_claude.mkdir(parents=True)
+
+        result = _run_entrypoint(
+            mock_env,
+            {
+                "FLAUDE_SESSION_ID": "ses-xyz",
+                "WORKSPACE": str(data_workspace),
+                "CLAUDE_CONFIG_DIR": str(data_claude),
+            },
+        )
+        assert "[flaude:session:ses-xyz]" in result.stdout
+
+    def test_session_mode_skips_clone_when_workspace_populated(
+        self, mock_env: dict[str, Any]
+    ) -> None:
+        """When workspace already has content, clone is skipped (session resume)."""
+        # Use the mock workspace (the one _run_entrypoint injects) and populate it.
+        workspace: Path = mock_env["workspace"]
+        (workspace / "existing_file.txt").write_text("already here")
+        data_claude = mock_env["tmp_path"] / "data" / "claude"
+        data_claude.mkdir(parents=True)
+
+        repos = json.dumps([{"url": "https://github.com/org/my-repo"}])
+        result = _run_entrypoint(
+            mock_env,
+            {
+                "FLAUDE_SESSION_ID": "ses-resume",
+                "CLAUDE_CONFIG_DIR": str(data_claude),
+                "FLAUDE_REPOS": repos,
+            },
+        )
+
+        assert "skipping clone (session resume)" in result.stdout
+        log = _read_log(mock_env)
+        clone_lines = [line for line in log if "git clone" in line]
+        assert len(clone_lines) == 0
+
+    def test_session_mode_clones_when_workspace_empty(
+        self, mock_env: dict[str, Any]
+    ) -> None:
+        """When workspace is empty in session mode, repos are still cloned."""
+        data_workspace = mock_env["tmp_path"] / "data" / "workspace"
+        data_workspace.mkdir(parents=True)
+        data_claude = mock_env["tmp_path"] / "data" / "claude"
+        data_claude.mkdir(parents=True)
+
+        repos = json.dumps([{"url": "https://github.com/org/my-repo"}])
+        result = _run_entrypoint(
+            mock_env,
+            {
+                "FLAUDE_SESSION_ID": "ses-new",
+                "WORKSPACE": str(data_workspace),
+                "CLAUDE_CONFIG_DIR": str(data_claude),
+                "FLAUDE_REPOS": repos,
+            },
+        )
+
+        assert "skipping clone" not in result.stdout
+        log = _read_log(mock_env)
+        clone_lines = [line for line in log if "git clone" in line]
+        assert len(clone_lines) == 1
+
+    def test_new_session_uses_session_id_flag(self, mock_env: dict[str, Any]) -> None:
+        """First turn of a session uses --session-id (no transcript exists)."""
+        data_workspace = mock_env["tmp_path"] / "data" / "workspace"
+        data_workspace.mkdir(parents=True)
+        data_claude = mock_env["tmp_path"] / "data" / "claude"
+        data_claude.mkdir(parents=True)
+
+        result = _run_entrypoint(
+            mock_env,
+            {
+                "FLAUDE_SESSION_ID": "ses-new123",
+                "WORKSPACE": str(data_workspace),
+                "CLAUDE_CONFIG_DIR": str(data_claude),
+            },
+        )
+
+        assert "[flaude] Starting new session ses-new123" in result.stdout
+        log = _read_log(mock_env)
+        claude_lines = [line for line in log if line.startswith("claude")]
+        assert len(claude_lines) == 1
+        assert "--session-id ses-new123" in claude_lines[0]
+
+    def test_resume_session_uses_resume_flag(self, mock_env: dict[str, Any]) -> None:
+        """Subsequent turns use --resume when a transcript file exists."""
+        data_claude = mock_env["tmp_path"] / "data" / "claude"
+        data_claude.mkdir(parents=True)
+
+        # The script does `cd "$WORKSPACE"` then encodes $PWD.
+        # _run_entrypoint sets WORKSPACE to mock_env["workspace"], so $PWD
+        # after cd will be that path (resolved via the shell).
+        # Mirror the script's encoding: replace non-alphanumeric chars with '-'.
+        workspace: Path = mock_env["workspace"]
+        cmd = (
+            f"cd '{workspace}' && "
+            "echo \"$PWD\" | sed 's|[^a-zA-Z0-9]|-|g'"
+        )
+        encoded = subprocess.check_output(
+            ["bash", "-c", cmd], text=True,
+        ).strip()
+        projects_dir = data_claude / "projects" / encoded
+        projects_dir.mkdir(parents=True)
+        session_file = projects_dir / "ses-resume99.jsonl"
+        session_file.write_text('{"role":"assistant","content":"hi"}\n')
+
+        result = _run_entrypoint(
+            mock_env,
+            {
+                "FLAUDE_SESSION_ID": "ses-resume99",
+                "CLAUDE_CONFIG_DIR": str(data_claude),
+            },
+        )
+
+        assert "[flaude] Resuming session ses-resume99" in result.stdout
+        log = _read_log(mock_env)
+        claude_lines = [line for line in log if line.startswith("claude")]
+        assert len(claude_lines) == 1
+        assert "--resume ses-resume99" in claude_lines[0]
+
+    def test_one_shot_mode_no_session_args(self, mock_env: dict[str, Any]) -> None:
+        """Without FLAUDE_SESSION_ID, claude is invoked without session flags."""
+        result = _run_entrypoint(mock_env)
+
+        assert "[flaude:session:" not in result.stdout
+        log = _read_log(mock_env)
+        claude_lines = [line for line in log if line.startswith("claude")]
+        assert len(claude_lines) == 1
+        assert "--resume" not in claude_lines[0]
+        assert "--session-id" not in claude_lines[0]

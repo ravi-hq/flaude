@@ -13,7 +13,14 @@ import re
 from dataclasses import dataclass
 
 from flaude.fly_client import FlyAPIError, fly_get
-from flaude.machine import FlyMachine, create_machine, destroy_machine, stop_machine
+from flaude.machine import (
+    FlyMachine,
+    create_machine,
+    destroy_machine,
+    start_machine,
+    stop_machine,
+    update_machine,
+)
 from flaude.machine_config import MachineConfig
 
 logger = logging.getLogger(__name__)
@@ -363,6 +370,71 @@ async def run_and_destroy(
             machine_id=result.machine_id,
             exit_code=result.exit_code,
             state=result.state,
+        )
+
+    return result
+
+
+async def run_session_turn(
+    app_name: str,
+    machine_id: str,
+    config: MachineConfig,
+    *,
+    token: str | None = None,
+    wait_timeout: float = 3600.0,
+    raise_on_failure: bool = True,
+) -> RunResult:
+    """Execute a single turn of a session on an existing stopped machine.
+
+    Updates the machine's config (new prompt, same session ID), starts it,
+    waits for the Claude Code process to exit, and leaves the machine in
+    ``stopped`` state for the next turn. Does NOT destroy the machine.
+
+    Args:
+        app_name: The Fly app the session belongs to.
+        machine_id: The stopped machine to resume.
+        config: Updated config with new ``prompt`` (must include ``session_id``).
+        token: Explicit Fly API token.
+        wait_timeout: Max seconds to wait for machine to exit.
+        raise_on_failure: If True, raise on non-zero exit.
+
+    Returns:
+        A :class:`RunResult` with exit details. ``destroyed`` is always False.
+    """
+    # 1. Update machine config (injects new FLAUDE_PROMPT + FLAUDE_SESSION_ID)
+    await update_machine(app_name, machine_id, config, token=token)
+
+    # 2. Start the stopped machine
+    await start_machine(app_name, machine_id, token=token)
+    logger.info("Session turn started on machine %s", machine_id)
+
+    # 3. Wait for exit (machine stops itself after claude -p exits)
+    state, exit_code = await wait_for_machine_exit(
+        app_name,
+        machine_id,
+        token=token,
+        timeout=wait_timeout,
+    )
+
+    logger.info(
+        "Session turn complete on machine %s: state=%s exit_code=%s",
+        machine_id,
+        state,
+        exit_code,
+    )
+
+    result = RunResult(
+        machine_id=machine_id,
+        exit_code=exit_code,
+        state=state,
+        destroyed=False,
+    )
+
+    if raise_on_failure and _is_failure(result.exit_code, result.state):
+        raise MachineExitError(
+            machine_id=machine_id,
+            exit_code=exit_code,
+            state=state,
         )
 
     return result

@@ -14,7 +14,9 @@ from flaude.machine import (
     create_machine,
     destroy_machine,
     get_machine,
+    start_machine,
     stop_machine,
+    update_machine,
 )
 from flaude.machine_config import MachineConfig
 
@@ -363,3 +365,130 @@ async def test_cleanup_propagates_destroy_error() -> None:
     with pytest.raises(FlyAPIError) as exc_info:
         await machine.cleanup(token=TOKEN)
     assert exc_info.value.status_code == 500
+
+
+# ---------------------------------------------------------------------------
+# start_machine
+# ---------------------------------------------------------------------------
+
+
+@respx.mock
+async def test_start_machine_sends_post() -> None:
+    """start_machine POSTs to the start endpoint."""
+    route = respx.post(f"{FLY_API_BASE}/apps/{APP}/machines/m_abc123/start").mock(
+        return_value=httpx.Response(200, json={})
+    )
+
+    await start_machine(APP, "m_abc123", token=TOKEN)
+    assert route.called
+
+
+@respx.mock
+async def test_start_machine_ignores_404() -> None:
+    """start_machine silently ignores 404 (machine already gone)."""
+    respx.post(f"{FLY_API_BASE}/apps/{APP}/machines/m_gone/start").mock(
+        return_value=httpx.Response(404, text="not found")
+    )
+
+    await start_machine(APP, "m_gone", token=TOKEN)
+
+
+@respx.mock
+async def test_start_machine_ignores_409() -> None:
+    """start_machine silently ignores 409 (already started)."""
+    respx.post(f"{FLY_API_BASE}/apps/{APP}/machines/m_running/start").mock(
+        return_value=httpx.Response(409, text="conflict")
+    )
+
+    await start_machine(APP, "m_running", token=TOKEN)
+
+
+@respx.mock
+async def test_start_machine_raises_on_other_errors() -> None:
+    """start_machine re-raises non-404/409 errors."""
+    respx.post(f"{FLY_API_BASE}/apps/{APP}/machines/m_abc123/start").mock(
+        return_value=httpx.Response(500, text="server error")
+    )
+
+    with pytest.raises(FlyAPIError) as exc_info:
+        await start_machine(APP, "m_abc123", token=TOKEN)
+    assert exc_info.value.status_code == 500
+
+
+# ---------------------------------------------------------------------------
+# update_machine
+# ---------------------------------------------------------------------------
+
+
+@respx.mock
+async def test_update_machine_returns_fly_machine() -> None:
+    """update_machine PUTs to the API and returns a FlyMachine."""
+    route = respx.put(f"{FLY_API_BASE}/apps/{APP}/machines/m_abc123").mock(
+        return_value=httpx.Response(200, json=_machine_response(state="stopped"))
+    )
+
+    machine = await update_machine(APP, "m_abc123", _machine_config(), token=TOKEN)
+
+    assert isinstance(machine, FlyMachine)
+    assert machine.id == "m_abc123"
+    assert machine.state == "stopped"
+    assert machine.app_name == APP
+    assert route.called
+
+
+@respx.mock
+async def test_update_machine_sends_config_payload() -> None:
+    """update_machine sends the full machine config as the PUT body."""
+    route = respx.put(f"{FLY_API_BASE}/apps/{APP}/machines/m_abc123").mock(
+        return_value=httpx.Response(200, json=_machine_response())
+    )
+
+    cfg = _machine_config(prompt="New prompt")
+    await update_machine(APP, "m_abc123", cfg, token=TOKEN)
+
+    import json
+
+    body = json.loads(route.calls[0].request.content)
+    assert body["config"]["env"]["FLAUDE_PROMPT"] == "New prompt"
+
+
+@respx.mock
+async def test_update_machine_with_name() -> None:
+    """When a name is provided it is included in the PUT payload."""
+    route = respx.put(f"{FLY_API_BASE}/apps/{APP}/machines/m_abc123").mock(
+        return_value=httpx.Response(200, json=_machine_response(name="new-name"))
+    )
+
+    machine = await update_machine(
+        APP, "m_abc123", _machine_config(), name="new-name", token=TOKEN
+    )
+
+    import json
+
+    body = json.loads(route.calls[0].request.content)
+    assert body["name"] == "new-name"
+    assert machine.name == "new-name"
+
+
+@respx.mock
+async def test_update_machine_raises_on_api_error() -> None:
+    """FlyAPIError is raised when the API returns a non-2xx status."""
+    respx.put(f"{FLY_API_BASE}/apps/{APP}/machines/m_abc123").mock(
+        return_value=httpx.Response(422, text="invalid config")
+    )
+
+    with pytest.raises(FlyAPIError) as exc_info:
+        await update_machine(APP, "m_abc123", _machine_config(), token=TOKEN)
+    assert exc_info.value.status_code == 422
+
+
+@respx.mock
+async def test_update_machine_raises_on_empty_response() -> None:
+    """FlyAPIError raised when API returns an empty body."""
+    respx.put(f"{FLY_API_BASE}/apps/{APP}/machines/m_abc123").mock(
+        return_value=httpx.Response(204)
+    )
+
+    with pytest.raises(FlyAPIError) as exc_info:
+        await update_machine(APP, "m_abc123", _machine_config(), token=TOKEN)
+    assert exc_info.value.status_code == 0

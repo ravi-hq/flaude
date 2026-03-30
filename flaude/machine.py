@@ -6,7 +6,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
-from flaude.fly_client import FlyAPIError, fly_delete, fly_get, fly_post
+from flaude.fly_client import FlyAPIError, fly_delete, fly_get, fly_post, fly_put
 from flaude.machine_config import MachineConfig, build_machine_config
 
 logger = logging.getLogger(__name__)
@@ -215,3 +215,88 @@ async def destroy_machine(
             logger.debug("Machine %s already gone (404)", machine_id)
         else:
             raise
+
+
+async def start_machine(
+    app_name: str,
+    machine_id: str,
+    *,
+    token: str | None = None,
+) -> None:
+    """Start a stopped machine.
+
+    Best-effort — if the machine is already started or gone, the error
+    is suppressed.
+
+    Args:
+        app_name: The Fly app the machine belongs to.
+        machine_id: The machine ID to start.
+        token: Explicit API token (falls back to ``FLY_API_TOKEN``).
+    """
+    try:
+        await fly_post(
+            f"/apps/{app_name}/machines/{machine_id}/start",
+            token=token,
+        )
+        logger.info("Start signal sent to machine %s", machine_id)
+    except FlyAPIError as exc:
+        if exc.status_code in (404, 409):
+            logger.debug(
+                "Machine %s start returned %s (already started/gone)",
+                machine_id,
+                exc.status_code,
+            )
+        else:
+            raise
+
+
+async def update_machine(
+    app_name: str,
+    machine_id: str,
+    config: MachineConfig,
+    *,
+    name: str | None = None,
+    token: str | None = None,
+    timeout: float = 60.0,
+) -> FlyMachine:
+    """Update a stopped machine's configuration.
+
+    Sends a PUT to ``/v1/apps/{app}/machines/{id}`` with the full config
+    payload. Used to inject new env vars (prompt, session ID) between
+    session turns.
+
+    Args:
+        app_name: The Fly app the machine belongs to.
+        machine_id: The machine ID to update.
+        config: Updated :class:`MachineConfig`.
+        name: Optional machine name override.
+        token: Explicit API token.
+        timeout: HTTP request timeout in seconds.
+
+    Returns:
+        A :class:`FlyMachine` with updated state.
+    """
+    payload = build_machine_config(config)
+    if name:
+        payload["name"] = name
+
+    logger.info("Updating machine %s in app %r", machine_id, app_name)
+
+    data = await fly_put(
+        f"/apps/{app_name}/machines/{machine_id}",
+        json=payload,
+        token=token,
+        timeout=timeout,
+    )
+
+    if not data or not isinstance(data, dict):
+        raise FlyAPIError(
+            status_code=0,
+            detail="Empty or invalid response from update-machine endpoint",
+            method="PUT",
+            url=f"/apps/{app_name}/machines/{machine_id}",
+        )
+
+    machine = _parse_machine_response(data, app_name)
+    logger.info("Machine %s updated (state=%s)", machine.id, machine.state)
+    return machine
