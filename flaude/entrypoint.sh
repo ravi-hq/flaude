@@ -142,6 +142,21 @@ if [ -n "${FLAUDE_SESSION_ID:-}" ]; then
     echo "$PWD" > /data/.flaude_cwd
 fi
 
+# --- Emit workspace file manifest ---
+emit_manifest() {
+    local manifest_json
+    manifest_json=$(find . \
+        -not -path '*/.git/*' -not -path '*/.git' \
+        -not -path '*/node_modules/*' -not -path '*/node_modules' \
+        -not -path './.DS_Store' \
+        -type f \
+        | sort \
+        | jq -R . | jq -sc "{workspace: \"$PWD\", files: .}")
+    echo "[flaude:manifest:${manifest_json}]"
+}
+
+emit_manifest
+
 # Build optional output format arguments
 output_fmt_args=()
 if [ -n "${FLAUDE_OUTPUT_FORMAT:-}" ]; then

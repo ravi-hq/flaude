@@ -8,6 +8,7 @@ cancellation, and unexpected exceptions.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import re
 from dataclasses import dataclass
@@ -58,6 +59,33 @@ def extract_exit_code_from_logs(logs: list[str]) -> int | None:
         if m:
             return int(m.group(1))
     return None
+
+
+# Regex for the workspace manifest marker: [flaude:manifest:{...}]
+_MANIFEST_MARKER_RE = re.compile(r"\[flaude:manifest:(\{.*\})\]")
+
+
+def extract_workspace_manifest_from_logs(logs: list[str]) -> tuple[str, ...]:
+    """Parse the ``[flaude:manifest:{...}]`` marker written by *entrypoint.sh*.
+
+    Scans *logs* for the manifest marker and returns the file list.
+    Returns an empty tuple if no marker is found.
+
+    Args:
+        logs: Log lines collected from the machine's stdout/stderr.
+
+    Returns:
+        A tuple of relative file paths found in the workspace.
+    """
+    for line in logs:
+        m = _MANIFEST_MARKER_RE.search(line)
+        if m:
+            try:
+                data = json.loads(m.group(1))
+                return tuple(data.get("files", []))
+            except (json.JSONDecodeError, TypeError):
+                return ()
+    return ()
 
 
 def _is_failure(exit_code: int | None, state: str) -> bool:
@@ -121,12 +149,14 @@ class RunResult:
         exit_code: Process exit code (0 = success).
         state: Final machine state (e.g. ``stopped``, ``failed``).
         destroyed: Whether the machine was successfully destroyed.
+        workspace_files: Tuple of relative file paths in the workspace.
     """
 
     machine_id: str
     exit_code: int | None
     state: str
     destroyed: bool
+    workspace_files: tuple[str, ...] = ()
 
 
 async def wait_for_machine_exit(

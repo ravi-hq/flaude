@@ -28,6 +28,7 @@ from flaude.runner import (
     _cleanup_machine,
     _is_failure,
     extract_exit_code_from_logs,
+    extract_workspace_manifest_from_logs,
     wait_for_machine_exit,
 )
 
@@ -148,12 +149,25 @@ class StreamingRun:
         if effective_exit_code is None:
             effective_exit_code = extract_exit_code_from_logs(self._collected_logs)
 
+        # Extract workspace manifest from logs
+        workspace_files = extract_workspace_manifest_from_logs(self._collected_logs)
+
         if raise_on_failure and _is_failure(effective_exit_code, run_result.state):
             raise MachineExitError(
                 machine_id=run_result.machine_id,
                 exit_code=effective_exit_code,
                 state=run_result.state,
                 logs=self._collected_logs,
+            )
+
+        # Return enriched result with workspace files if found
+        if workspace_files:
+            return RunResult(
+                machine_id=run_result.machine_id,
+                exit_code=effective_exit_code,
+                state=run_result.state,
+                destroyed=run_result.destroyed,
+                workspace_files=workspace_files,
             )
 
         return run_result

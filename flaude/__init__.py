@@ -33,6 +33,7 @@ from flaude.runner import (
     MachineExitError,
     RunResult,
     extract_exit_code_from_logs,
+    extract_workspace_manifest_from_logs,
     run_and_destroy,
     run_session_turn,
 )
@@ -74,6 +75,7 @@ __all__ = [
     "docker_push",
     "ensure_image",
     "extract_exit_code_from_logs",
+    "extract_workspace_manifest_from_logs",
     "fetch_machine_logs",
     "get_app",
     "FlyVolume",
