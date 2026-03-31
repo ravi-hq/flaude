@@ -7,6 +7,14 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-03-30
+
+### Added
+- Workspace file manifest: after repo cloning, `entrypoint.sh` emits a `[flaude:manifest:{...}]` tagged log line listing all workspace files
+- `RunResult.workspace_files` field — tuple of relative file paths extracted from the manifest log line
+- `extract_workspace_manifest_from_logs()` public utility for parsing manifest markers from collected logs
+- `StreamingRun.result()` automatically populates `workspace_files` on the returned `RunResult`
+
 ## [0.4.0] - 2026-03-30
 
 ### Fixed
@@ -56,7 +64,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - Support for cloning multiple repos into `/workspace`
 - Concurrent execution support
 
-[Unreleased]: https://github.com/ravi-hq/flaude/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/ravi-hq/flaude/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/ravi-hq/flaude/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/ravi-hq/flaude/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/ravi-hq/flaude/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/ravi-hq/flaude/compare/v0.1.0...v0.2.0
