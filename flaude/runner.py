@@ -96,6 +96,14 @@ def _is_failure(exit_code: int | None, state: str) -> bool:
     - The machine reached the ``failed`` state, regardless of exit code
       (this covers OOM kills, entrypoint crashes, etc. where the Fly API
       may not populate the exit code field).
+
+    .. note::
+
+       The Fly API may report a non-zero exit code from the VM teardown
+       (kernel reboot) even when the entrypoint exited cleanly.  Callers
+       with access to collected logs should prefer the ``[flaude:exit:N]``
+       marker (via :func:`extract_exit_code_from_logs`) over the raw Fly
+       API exit code — see :meth:`StreamingRun.result` for an example.
     """
     if exit_code is not None and exit_code != 0:
         return True

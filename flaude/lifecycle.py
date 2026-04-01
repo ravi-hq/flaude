@@ -142,12 +142,15 @@ class StreamingRun:
         finally:
             await self.cleanup()
 
-        # Use log-based exit code as fallback when the Fly API returns None.
-        # entrypoint.sh always writes [flaude:exit:N] before exiting so this
-        # gives us the real exit code even when the API response is incomplete.
-        effective_exit_code = run_result.exit_code
-        if effective_exit_code is None:
-            effective_exit_code = extract_exit_code_from_logs(self._collected_logs)
+        # Prefer the log-based exit code over the Fly API exit code.
+        # The Fly API reports the VM-level exit code which includes the
+        # kernel shutdown sequence — this can be non-zero even when Claude
+        # Code (and the entrypoint) exited cleanly.  entrypoint.sh always
+        # writes [flaude:exit:N] with the *real* process exit code.
+        log_exit_code = extract_exit_code_from_logs(self._collected_logs)
+        effective_exit_code = (
+            log_exit_code if log_exit_code is not None else run_result.exit_code
+        )
 
         # Extract workspace manifest from logs
         workspace_files = extract_workspace_manifest_from_logs(self._collected_logs)
