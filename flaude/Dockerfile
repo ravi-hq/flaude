@@ -27,8 +27,12 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
 RUN npm install -g @anthropic-ai/claude-code && \
     npm cache clean --force
 
-# Create a non-root working directory for repo cloning and execution
-RUN mkdir -p /workspace
+# Create a non-root user for Claude Code (--dangerously-skip-permissions
+# refuses to run as root for security reasons)
+RUN useradd -m -s /bin/bash claude
+
+# Create working directories owned by the non-root user
+RUN mkdir -p /workspace /data && chown claude:claude /workspace /data
 WORKDIR /workspace
 
 # Copy entrypoint script

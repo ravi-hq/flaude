@@ -10,7 +10,10 @@ set -euo pipefail
 if [ -n "${FLAUDE_SESSION_ID:-}" ]; then
     WORKSPACE="${WORKSPACE:-/data/workspace}"
     export CLAUDE_CONFIG_DIR="${CLAUDE_CONFIG_DIR:-/data/claude}"
+    # Fly volume mounts are root-owned; fix ownership for the claude user
+    chown -R claude:claude /data 2>/dev/null || true
     mkdir -p "$CLAUDE_CONFIG_DIR" "$WORKSPACE"
+    chown claude:claude "$CLAUDE_CONFIG_DIR" "$WORKSPACE"
     echo "[flaude] Session mode: session_id=$FLAUDE_SESSION_ID"
     echo "[flaude:session:$FLAUDE_SESSION_ID]"
 else
@@ -43,11 +46,18 @@ clone_repos() {
 
     echo "[flaude] Cloning repositories..."
 
-    # Configure git credentials for private repos
+    # Configure git credentials for private repos (set up for both root and claude user)
     if [ -n "${GITHUB_USERNAME:-}" ] && [ -n "${GITHUB_TOKEN:-}" ]; then
         git config --global credential.helper store
         echo "https://${GITHUB_USERNAME}:${GITHUB_TOKEN}@github.com" \
             > ~/.git-credentials
+        # Also configure for the claude user so Claude Code can use git
+        local claude_home
+        claude_home=$(eval echo ~claude)
+        runuser -u claude -- git config --global credential.helper store
+        echo "https://${GITHUB_USERNAME}:${GITHUB_TOKEN}@github.com" \
+            > "${claude_home}/.git-credentials"
+        chown claude:claude "${claude_home}/.git-credentials" "${claude_home}/.gitconfig"
         echo "[flaude] Git credentials configured for ${GITHUB_USERNAME}"
     fi
 
@@ -132,6 +142,9 @@ fi
 
 echo "[flaude] Running Claude Code in $WORKSPACE ..."
 
+# Ensure workspace is owned by the claude user
+chown -R claude:claude "$WORKSPACE" 2>/dev/null || true
+
 cd "$WORKSPACE"
 
 # Persist effective CWD so subsequent turns use the same path.
@@ -187,7 +200,7 @@ if [ -n "${FLAUDE_SESSION_ID:-}" ]; then
 fi
 
 set +e
-claude -p --dangerously-skip-permissions "${output_fmt_args[@]}" "${session_args[@]}" -- "$FLAUDE_PROMPT"
+runuser -u claude -- claude -p --dangerously-skip-permissions "${output_fmt_args[@]}" "${session_args[@]}" -- "$FLAUDE_PROMPT"
 EXIT_CODE=$?
 set -e
 
