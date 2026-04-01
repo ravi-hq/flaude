@@ -187,7 +187,7 @@ if [ -n "${FLAUDE_SESSION_ID:-}" ]; then
 fi
 
 set +e
-claude -p "${output_fmt_args[@]}" "${session_args[@]}" -- "$FLAUDE_PROMPT"
+claude -p --dangerously-skip-permissions "${output_fmt_args[@]}" "${session_args[@]}" -- "$FLAUDE_PROMPT"
 EXIT_CODE=$?
 set -e
 
