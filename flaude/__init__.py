@@ -10,6 +10,7 @@ from flaude.executor import (
     ExecutionResult,
 )
 from flaude.fly_client import fetch_machine_logs
+from flaude.hibernate import HibernatedSession, hibernate_session, wake_session
 from flaude.image import (
     ImageBuildError,
     docker_build,
@@ -38,21 +39,28 @@ from flaude.runner import (
     run_session_turn,
 )
 from flaude.session import Session, create_session, destroy_session
+from flaude.snapshot import S3SnapshotBackend, SnapshotBackend, SnapshotRef
 from flaude.volume import FlyVolume, create_volume, destroy_volume, list_volumes
 
 __all__ = [
     # Primary API
     "ConcurrentExecutor",
     "ExecutionRequest",
+    "HibernatedSession",
     "MachineConfig",
     "RunResult",
+    "S3SnapshotBackend",
     "Session",
+    "SnapshotBackend",
+    "SnapshotRef",
     "create_session",
     "destroy_session",
     "ensure_app",
+    "hibernate_session",
     "run_and_destroy",
     "run_session_turn",
     "run_with_logs",
+    "wake_session",
     # Advanced API
     "BatchResult",
     "ExecutionResult",

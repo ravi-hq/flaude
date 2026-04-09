@@ -7,6 +7,16 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- `hibernate_session()` — stop machine, snapshot volume to object storage, destroy Fly resources (machine + volume); Fly resources are only destroyed after a successful upload (atomicity guarantee)
+- `wake_session()` — download snapshot, create new volume + machine, resume with the same `session_id`; snapshot is not deleted on restore failure
+- `HibernatedSession` dataclass — immutable record of a hibernated session (session_id, snapshot ref, app_name, region, hibernated_at)
+- `SnapshotRef` dataclass — immutable reference to an uploaded snapshot (backend, URI, size_bytes, SHA-256 checksum, created_at, version)
+- `SnapshotBackend` protocol — pluggable interface for snapshot storage backends (upload / download / delete)
+- `S3SnapshotBackend` — S3-compatible backend (Cloudflare R2 / AWS S3 / Backblaze B2) using `boto3`; multipart upload for large volumes
+- `s3` optional extra (`pip install flaude[s3]`) — pulls in `boto3>=1.34` without making it a hard dependency
+- All new symbols exported from package root (`flaude.*`)
+
 ## [0.6.1] - 2026-03-31
 
 ### Fixed
