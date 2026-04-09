@@ -36,7 +36,13 @@ MachineConfig ──► create VM ──► clone repos
 pip install flaude
 ```
 
-Requires Python 3.11+. The only runtime dependency is [httpx](https://www.python-httpx.org/).
+For snapshot / hibernate support (requires boto3):
+
+```bash
+pip install flaude[s3]
+```
+
+Requires Python 3.11+. The only mandatory runtime dependency is [httpx](https://www.python-httpx.org/).
 
 ## Prerequisites
 
@@ -142,6 +148,64 @@ async def main():
     await destroy_session(session.app_name, session)
 ```
 
+### Hibernate and wake
+
+Hibernating a session snapshots the Fly volume to object storage (R2/S3/B2)
+and destroys the volume, cutting the $0.15/GB-month storage cost to zero
+while the session is idle. Waking restores the snapshot into a fresh volume
+and creates a new machine, resuming the conversation from where it left off.
+
+```python
+from flaude import (
+    MachineConfig,
+    S3SnapshotBackend,
+    create_session,
+    hibernate_session,
+    wake_session,
+)
+
+# Configure the snapshot backend (Cloudflare R2 shown here)
+backend = S3SnapshotBackend(
+    bucket="my-snapshots",
+    key_prefix="flaude/sessions",
+    endpoint_url="https://<account>.r2.cloudflarestorage.com",
+    aws_access_key_id="...",
+    aws_secret_access_key="...",
+)
+
+# Create a session as usual
+config = MachineConfig(
+    claude_code_oauth_token="sk-ant-oat-...",
+    prompt="Audit src/ for security issues.",
+    repos=["https://github.com/you/your-repo"],
+)
+session, result = await create_session("my-flaude-app", config)
+
+# Hibernate — destroys Fly machine + volume, uploads snapshot to R2/S3
+hibernated = await hibernate_session(session, snapshot_backend=backend)
+# hibernated.snapshot contains the SnapshotRef (URI, checksum, size)
+
+# ...hours or days later...
+
+# Wake — downloads snapshot, creates fresh volume + machine
+config2 = MachineConfig(
+    claude_code_oauth_token="sk-ant-oat-...",
+    prompt="Fix the top 3 issues you found earlier.",
+)
+session2 = await wake_session(hibernated, config=config2, snapshot_backend=backend)
+
+# session2.session_id == session.session_id — Claude remembers everything
+```
+
+**Atomicity guarantees**:
+- `hibernate_session` — Fly resources are only destroyed *after* the snapshot
+  upload succeeds. A failed upload leaves the session intact.
+- `wake_session` — a restore failure does *not* delete the snapshot; you can
+  retry as many times as needed.
+
+**Custom snapshot backends**: Implement the `SnapshotBackend` protocol to use
+any storage system (GCS, Azure Blob, local disk, etc.).
+
 ## API overview
 
 ### Configuration
@@ -168,6 +232,17 @@ async def main():
 | `run_session_turn()` | Run a follow-up prompt on an existing session. |
 | `destroy_session()` | Destroy session (machine + volume). |
 | `Session` | Dataclass tracking session state across turns. |
+
+### Hibernate and wake
+
+| Function / Class | Purpose |
+|------------------|---------|
+| `hibernate_session()` | Snapshot volume to object storage, destroy Fly resources. |
+| `wake_session()` | Restore snapshot into a new volume + machine. |
+| `HibernatedSession` | Immutable record of a hibernated session (snapshot ref + metadata). |
+| `SnapshotRef` | Immutable reference to an uploaded snapshot (URI, checksum, size). |
+| `SnapshotBackend` | Protocol for pluggable snapshot storage backends. |
+| `S3SnapshotBackend` | S3-compatible backend (R2 / S3 / B2). Requires `flaude[s3]`. |
 
 ### App & machine management
 
